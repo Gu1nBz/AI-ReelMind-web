@@ -27,7 +27,127 @@
 
 ---
 
-## 3. 接口约定建议
+## 3. 推荐技术栈与部署约定
+
+这部分建议直接作为后端开工口径使用，不只是参考。
+
+### 3.1 推荐技术栈
+
+建议后端统一采用：
+
+- `Go 1.26.x`
+- `Gin` 作为 HTTP API 框架
+- `PostgreSQL` 作为主数据库
+- `sqlc` 作为数据库访问层
+- `golang-migrate` 管理数据库迁移
+- `Redis` 处理验证码、限流、缓存和任务协调
+- `Asynq` 处理异步任务和 worker
+- `MinIO` 作为统一对象存储
+- `JWT + Refresh Token` 处理用户和管理员登录态
+- `Swagger / OpenAPI` 输出接口文档
+- `Docker Compose` 作为基础部署和联调方式
+
+### 3.2 选择这套栈的原因
+
+- 这个项目的后端核心是异步任务系统，不只是给前端喂数据。
+- 重点链路包括：创建任务、扣费、调用上游、轮询或回调、失败退款、结果转存、过期清理。
+- `Go + PostgreSQL + Redis + Asynq` 很适合把这条链路做稳。
+- `sqlc` 比较适合积分余额、积分流水、兑换码状态这类强事务场景，关键 SQL 更容易控。
+
+### 3.3 仓库和服务建议
+
+不和前端放在一个仓库，直接独立后端仓库即可，例如：
+
+```text
+AI-ReelMind-server/
+  cmd/api
+  cmd/worker
+  internal/auth
+  internal/users
+  internal/models
+  internal/tasks
+  internal/redeem
+  internal/billing
+  internal/providers
+  internal/storage
+  internal/jobs
+  migrations
+  docs
+```
+
+建议至少拆成两个进程：
+
+1. `api`
+   - 提供前台接口、后台接口、上游回调接口
+
+2. `worker`
+   - 处理上游轮询、超时处理、失败退款、结果转存、文件过期清理
+
+### 3.4 MinIO 统一约定
+
+当前阶段统一约定如下：
+
+- 不区分本地和生产的对象存储方案
+- 本地和生产都统一使用 `MinIO`
+- 后续如果业务上确实需要 `OSS` 或其他对象存储，再单独补适配
+
+也就是说，这一版后端里所有对象存储相关能力，都按 `S3 兼容接口 + MinIO` 来设计和实现。
+
+### 3.5 MinIO 使用范围
+
+`MinIO` 负责以下内容：
+
+- 用户上传的图片、视频、音频参考素材
+- 上游返回成功后转存的视频结果
+- 转存后的封面图
+- 任务相关临时文件
+
+建议最少准备两个 bucket：
+
+- `reelmind-assets`
+- `reelmind-results`
+
+建议对象 key 结构：
+
+```text
+assets/{user_id}/{yyyy}/{mm}/{dd}/{asset_id}-{filename}
+results/{user_id}/{task_id}/video.mp4
+results/{user_id}/{task_id}/cover.jpg
+```
+
+### 3.6 环境变量建议
+
+```text
+APP_ENV=production
+APP_PORT=8080
+
+POSTGRES_DSN=postgres://user:pass@postgres:5432/reelmind?sslmode=disable
+REDIS_ADDR=redis:6379
+
+JWT_ACCESS_SECRET=xxx
+JWT_REFRESH_SECRET=xxx
+
+MINIO_ENDPOINT=minio:9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+MINIO_USE_SSL=false
+MINIO_BUCKET_ASSETS=reelmind-assets
+MINIO_BUCKET_RESULTS=reelmind-results
+MINIO_PUBLIC_BASE_URL=https://files.example.com
+```
+
+### 3.7 后端设计硬要求
+
+- 积分扣减和任务创建必须放在同一个事务里
+- 失败退款必须幂等
+- 回调处理必须幂等
+- 任务状态流转必须可追踪
+- 所有上传和结果文件都统一走 `MinIO`
+- 不长期依赖上游返回的临时文件地址
+
+---
+
+## 4. 接口约定建议
 
 建议统一前缀：
 
@@ -301,6 +421,7 @@
 - 权限：`user`
 - 用途：上传图片、视频、音频素材
 - 建议支持 `multipart/form-data`
+- 上传后的文件统一存到 `MinIO`
 - 请求字段：
   - `file`
   - `asset_type`：`image` `video` `audio`
@@ -319,7 +440,7 @@
   - 上传前按模型规则校验格式、大小、数量
   - 游客不能上传
 
-备注：如果你们后端更偏对象存储直传，也可以拆成两步：
+备注：如果你们采用 `MinIO` 直传，也可以拆成两步：
 
 - `POST /user/uploads/presign`
 - `POST /user/uploads/confirm`
@@ -929,13 +1050,13 @@ PRD 没强制写这个，但真实运营里很常用。
 
 ### 20.3 结果文件转存
 
-- 上游成功后转存视频和封面到平台对象存储
+- 上游成功后转存视频和封面到 `MinIO`
 - 更新 `video_url` `cover_url`
 - 写入 `storage_expires_at`
 
 ### 20.4 结果文件过期清理
 
-- 7 天后删除对象存储文件
+- 7 天后删除 `MinIO` 中的结果文件
 - 更新 `storage_deleted_at`
 - 保留任务记录
 
