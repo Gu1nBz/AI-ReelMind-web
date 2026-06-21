@@ -23,7 +23,7 @@ import {
   Sparkles,
   WandSparkles
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { UserLayout } from "@/components/layout/UserLayout";
 import { ModelSelector } from "@/components/forms/ModelSelector";
 import { PromptModeFields } from "@/components/forms/PromptModeFields";
@@ -44,6 +44,14 @@ import { formatCredits } from "@/utils/format";
 
 const { useBreakpoint } = Grid;
 
+function getModelDefaultValues(model: (typeof models)[number]) {
+  return {
+    ratio: model.aspectRatios[0],
+    resolution: model.resolutions[0],
+    duration: model.defaultDuration ?? model.durations[0]
+  };
+}
+
 export function UserWorkspacePage() {
   const screens = useBreakpoint();
   const [form] = Form.useForm();
@@ -56,17 +64,25 @@ export function UserWorkspacePage() {
     () => models.find((item) => item.id === selectedModelId) ?? models[0],
     [selectedModelId]
   );
+  const watchedResolution = Form.useWatch("resolution", form);
+  const watchedDuration = Form.useWatch("duration", form);
+
+  useEffect(() => {
+    form.setFieldsValue(getModelDefaultValues(selectedModel));
+  }, [form, selectedModel]);
 
   const estimatedCost = useMemo(() => {
-    const resolution = form.getFieldValue("resolution") ?? selectedModel.resolutions[0];
-    const duration = Number(form.getFieldValue("duration") ?? selectedModel.durations[0] ?? selectedModel.defaultDuration ?? 0);
+    const resolution = watchedResolution ?? selectedModel.resolutions[0];
+    const duration = Number(
+      watchedDuration ?? selectedModel.defaultDuration ?? selectedModel.durations[0] ?? 0
+    );
     const base =
       selectedModel.billingType === "per_second"
         ? selectedModel.price * duration
         : selectedModel.price;
 
     return resolution === "720p" ? Math.round(base * 1.2) : base;
-  }, [form, selectedModel]);
+  }, [selectedModel, watchedDuration, watchedResolution]);
 
   const capabilityLabels = selectedModel.inputCapabilities.map((item) => item.label);
   const pricingText =
@@ -106,14 +122,7 @@ export function UserWorkspacePage() {
               <Form
                 layout="vertical"
                 form={form}
-                initialValues={{
-                  ratio: selectedModel.aspectRatios[0],
-                  resolution: selectedModel.resolutions[0],
-                  duration: selectedModel.defaultDuration ?? selectedModel.durations[0]
-                }}
-                onValuesChange={() => {
-                  void estimatedCost;
-                }}
+                initialValues={getModelDefaultValues(selectedModel)}
                 onFinish={() => message.success("任务已创建")}
               >
                 <Row gutter={[16, 16]}>
