@@ -19,5 +19,5 @@ fi
 
 cd "$APP_DIR"
 
-sudo docker compose up -d --build --remove-orphans
+sudo docker compose up -d --force-recreate --remove-orphans
 sudo docker image prune -f

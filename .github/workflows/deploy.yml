@@ -1,6 +1,9 @@
 name: Deploy
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 concurrency:
@@ -13,6 +16,37 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Package deploy artifact
+        run: |
+          mkdir -p deploy-artifact/html
+          cp -a dist/. deploy-artifact/html/
+          cp nginx.conf docker-compose.yml scripts/deploy-production.sh deploy-artifact/
+          tar -C deploy-artifact -czf reelmind-web.tar.gz .
+
+      - name: Upload artifact to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
+          source: reelmind-web.tar.gz
+          target: /tmp
+
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -25,17 +59,16 @@ jobs:
             set -euo pipefail
 
             APP_DIR="/opt/reelmind-web"
-            REPO_URL="https://github.com/${{ github.repository }}.git"
-
             sudo mkdir -p "$APP_DIR"
-            sudo chown "$USER:$USER" "$APP_DIR"
+            sudo rm -rf /tmp/reelmind-web-release
+            sudo mkdir -p /tmp/reelmind-web-release
+            sudo tar -xzf /tmp/reelmind-web.tar.gz -C /tmp/reelmind-web-release
 
-            if [ ! -d "$APP_DIR/.git" ]; then
-              git clone "$REPO_URL" "$APP_DIR"
-            fi
+            sudo rm -rf "$APP_DIR/html"
+            sudo cp -a /tmp/reelmind-web-release/html "$APP_DIR/html"
+            sudo cp -a /tmp/reelmind-web-release/nginx.conf "$APP_DIR/nginx.conf"
+            sudo cp -a /tmp/reelmind-web-release/docker-compose.yml "$APP_DIR/docker-compose.yml"
+            sudo cp -a /tmp/reelmind-web-release/deploy-production.sh "$APP_DIR/deploy-production.sh"
+            sudo chmod +x "$APP_DIR/deploy-production.sh"
 
-            cd "$APP_DIR"
-            git fetch origin main
-            git reset --hard origin/main
-
-            bash scripts/deploy-production.sh
+            APP_DIR="$APP_DIR" bash "$APP_DIR/deploy-production.sh"

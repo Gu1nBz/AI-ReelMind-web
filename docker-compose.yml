@@ -1,8 +1,10 @@
 services:
   reelmind-web:
-    build:
-      context: .
+    image: nginx:1.27-alpine
     container_name: reelmind-web
     restart: unless-stopped
     ports:
       - "127.0.0.1:8081:80"
+    volumes:
+      - ./html:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
