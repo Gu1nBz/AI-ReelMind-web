@@ -2,3 +2,13 @@ node_modules
 dist
 .DS_Store
 *.tsbuildinfo
+dist/
+deploy_versions/
+.temp/
+.idea/
+.rn_temp/
+node_modules/
+.swc
+pnpm-lock.yaml
+.history
+.cursor
