@@ -10,11 +10,14 @@ const statusMap: Record<string, string> = {
   processing: "processing",
   succeeded: "success",
   failed: "error",
+  timed_out: "error",
   refunded: "purple",
   unused: "default",
   used: "success",
   disabled: "error",
-  enabled: "success"
+  enabled: "success",
+  visible: "success",
+  hidden: "default"
 };
 
 export function StatusTag({ status }: { status: string }) {

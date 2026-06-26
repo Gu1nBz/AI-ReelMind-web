@@ -1,13 +1,35 @@
-import { Card, Col, List, Row, Space, Table, Typography } from "antd";
+import { Card, Col, List, Row, Space, Table, Typography, message } from "antd";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { SectionHeader } from "@/components/common/SectionHeader";
 import { MetricCard } from "@/components/ui/MetricCard";
-import { adminStats, tasks, transactions } from "@/mock/data";
 import { StatusTag } from "@/components/common/StatusTag";
 import { useAnimeEntrance } from "@/hooks/useAnimeEntrance";
+import { CircleDollarSign, Film, History, Users } from "lucide-react";
+import { useEffect, useState } from "react";
+import type { ApiOverview } from "@/api/types";
+import { getOverview } from "@/api/admin";
+import { getErrorMessage } from "@/utils/errors";
+import { formatAmount } from "@/utils/format";
 
 export function AdminOverviewPage() {
   const ref = useAnimeEntrance("[data-animate-item]");
+  const [overview, setOverview] = useState<ApiOverview | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    getOverview()
+      .then(setOverview)
+      .catch((error) => message.error(getErrorMessage(error)))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const stats = [
+    { title: "用户数", value: String(overview?.total_users ?? 0), delta: "累计注册", icon: <Users size={16} /> },
+    { title: "可用模型", value: String(overview?.available_models ?? 0), delta: "状态 available", icon: <Film size={16} /> },
+    { title: "生成中任务", value: String(overview?.processing_tasks ?? 0), delta: "pending / submitted / processing", icon: <History size={16} /> },
+    { title: "今日消耗", value: String(overview?.today_credit_consumption ?? 0), delta: "积分", icon: <CircleDollarSign size={16} /> }
+  ];
 
   return (
     <AdminLayout>
@@ -18,7 +40,7 @@ export function AdminOverviewPage() {
             title="后台概览"
           />
           <Row gutter={[16, 16]} style={{ marginTop: 18 }}>
-            {adminStats.map((item) => (
+            {stats.map((item) => (
               <Col span={24} md={12} xl={6} key={item.title}>
                 <MetricCard title={item.title} value={item.value} delta={item.delta} icon={item.icon} />
               </Col>
@@ -35,18 +57,19 @@ export function AdminOverviewPage() {
                   rowKey="id"
                   pagination={false}
                   scroll={{ x: 760 }}
-                  dataSource={tasks}
+                  loading={loading}
+                  dataSource={overview?.recent_tasks ?? []}
                   columns={[
                     { title: "任务 ID", dataIndex: "id", key: "id" },
-                    { title: "模型", dataIndex: "modelName", key: "modelName" },
-                    { title: "创建时间", dataIndex: "createdAt", key: "createdAt" },
+                    { title: "用户 ID", dataIndex: "user_id", key: "user_id" },
+                    { title: "创建时间", dataIndex: "created_at", key: "created_at" },
                     {
                       title: "状态",
                       dataIndex: "status",
                       key: "status",
                       render: (value: string) => <StatusTag status={value} />
                     },
-                    { title: "消耗积分", dataIndex: "cost", key: "cost" }
+                    { title: "消耗积分", dataIndex: "credit_cost", key: "credit_cost" }
                   ]}
                 />
               </Space>
@@ -57,17 +80,18 @@ export function AdminOverviewPage() {
               <Space direction="vertical" size={18} style={{ width: "100%" }}>
                 <SectionHeader title="最近积分变化" />
                 <List
-                  dataSource={transactions}
+                  loading={loading}
+                  dataSource={overview?.recent_transactions ?? []}
                   renderItem={(item) => (
                     <List.Item>
                       <List.Item.Meta
                         title={
                           <Space>
-                            <Typography.Text strong>{item.note}</Typography.Text>
-                            <Typography.Text type="secondary">{item.createdAt}</Typography.Text>
+                            <Typography.Text strong>{item.transaction_type}</Typography.Text>
+                            <Typography.Text type="secondary">{item.created_at}</Typography.Text>
                           </Space>
                         }
-                        description={`变动 ${item.amount}，余额 ${item.balanceAfter}`}
+                        description={`变动 ${formatAmount(item.change_amount)}，余额 ${item.balance_after}`}
                       />
                     </List.Item>
                   )}

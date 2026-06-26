@@ -1,12 +1,26 @@
-import { Button, Card, Col, Row, Space, Typography } from "antd";
+import { Button, Card, Col, Empty, Row, Space, Typography, message } from "antd";
 import { Gift, Wallet } from "lucide-react";
 import { UserLayout } from "@/components/layout/UserLayout";
 import { SectionHeader } from "@/components/common/SectionHeader";
-import { packages } from "@/mock/data";
 import { useAnimeEntrance } from "@/hooks/useAnimeEntrance";
+import { useEffect, useState } from "react";
+import type { CreditPackage } from "@/mock/types";
+import { listPublicPackages } from "@/api/public";
+import { toCreditPackage } from "@/api/adapters";
+import { getErrorMessage } from "@/utils/errors";
 
 export function PricingPage() {
   const ref = useAnimeEntrance("[data-animate-item]");
+  const [packages, setPackages] = useState<CreditPackage[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    listPublicPackages()
+      .then((result) => setPackages(result.list.map(toCreditPackage)))
+      .catch((error) => message.error(getErrorMessage(error)))
+      .finally(() => setLoading(false));
+  }, []);
 
   return (
     <UserLayout>
@@ -17,6 +31,8 @@ export function PricingPage() {
             title="积分套餐"
           />
         </Card>
+
+        {packages.length === 0 && !loading ? <Empty description="暂无可购买套餐" /> : null}
 
         <Row gutter={[20, 20]} data-animate-item>
           {packages.map((item) => (
@@ -42,8 +58,20 @@ export function PricingPage() {
                       <Typography.Text key={feature}>{feature}</Typography.Text>
                     ))}
                   </Space>
-                  <Button type={item.recommended ? "primary" : "default"} size="large" block>
-                    跳转外部支付页
+                  <Button
+                    type={item.recommended ? "primary" : "default"}
+                    size="large"
+                    block
+                    loading={loading}
+                    onClick={() => {
+                      if (!item.paymentUrl) {
+                        message.warning("该套餐暂未配置支付链接");
+                        return;
+                      }
+                      window.open(item.paymentUrl, "_blank", "noopener,noreferrer");
+                    }}
+                  >
+                    {item.buttonText || "跳转外部支付页"}
                   </Button>
                 </Space>
               </Card>

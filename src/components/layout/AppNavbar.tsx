@@ -4,13 +4,13 @@ import {
   Coins,
   LogIn,
   Menu as MenuIcon,
-  Shield,
+  LogOut,
   UserRound
 } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { siteNav, userProfile } from "@/mock/data";
-import { animatePulse } from "@/utils/motion";
+import { siteNav } from "@/mock/data";
 import { useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 
 const { Header } = Layout;
 const { useBreakpoint } = Grid;
@@ -20,6 +20,7 @@ export function AppNavbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const { user, logout } = useAuth();
 
   const items = siteNav.map((item) => (
     <NavLink
@@ -42,23 +43,22 @@ export function AppNavbar() {
         onClick={() => navigate("/pricing")}
         aria-label="前往充值页面"
       >
-        {userProfile.credits} 积分
+        {user ? `${user.credit_balance} 积分` : "积分套餐"}
       </Button>
-      <Button icon={<UserRound size={16} />} onClick={() => navigate("/profile")}>
-        个人中心
-      </Button>
-      <Button
-        icon={<Shield size={16} />}
-        onClick={() => {
-          animatePulse(document.body);
-          navigate("/admin");
-        }}
-      >
-        后台
-      </Button>
-      <Button type="primary" icon={<LogIn size={16} />} onClick={() => navigate("/auth")}>
-        登录 / 注册
-      </Button>
+      {user ? (
+        <>
+          <Button icon={<UserRound size={16} />} onClick={() => navigate("/profile")}>
+            个人中心
+          </Button>
+          <Button icon={<LogOut size={16} />} onClick={logout}>
+            退出
+          </Button>
+        </>
+      ) : (
+        <Button type="primary" icon={<LogIn size={16} />} onClick={() => navigate("/auth")}>
+          登录 / 注册
+        </Button>
+      )}
     </Space>
   );
 
@@ -104,8 +104,8 @@ export function AppNavbar() {
         </Space>
 
         {screens.md ? actions : (
-          <Button type="primary" onClick={() => navigate("/auth")}>
-            登录
+          <Button type="primary" onClick={() => (user ? navigate("/profile") : navigate("/auth"))}>
+            {user ? `${user.credit_balance} 积分` : "登录"}
           </Button>
         )}
       </Header>

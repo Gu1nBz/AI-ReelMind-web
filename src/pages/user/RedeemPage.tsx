@@ -2,13 +2,60 @@ import { Button, Card, Form, Input, Space, Table, Typography, message } from "an
 import { KeyRound, ShieldCheck } from "lucide-react";
 import { UserLayout } from "@/components/layout/UserLayout";
 import { SectionHeader } from "@/components/common/SectionHeader";
-import { redeemCodes } from "@/mock/data";
 import { StatusTag } from "@/components/common/StatusTag";
 import { formatCredits } from "@/utils/format";
 import { useAnimeEntrance } from "@/hooks/useAnimeEntrance";
+import { useCallback, useEffect, useState } from "react";
+import type { RedeemCodeRecord } from "@/mock/types";
+import { listRedeemRecords, redeemCode } from "@/api/user";
+import { toRedeemRecord } from "@/api/adapters";
+import { getErrorMessage } from "@/utils/errors";
+import { useAuth } from "@/hooks/useAuth";
 
 export function RedeemPage() {
   const ref = useAnimeEntrance("[data-animate-item]");
+  const [records, setRecords] = useState<RedeemCodeRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [form] = Form.useForm();
+  const { user, refreshUser } = useAuth();
+
+  const loadRecords = useCallback(async () => {
+    if (!user) {
+      setRecords([]);
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await listRedeemRecords(1, 20);
+      setRecords(result.list.map(toRedeemRecord));
+    } catch (error) {
+      message.error(getErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    void loadRecords();
+  }, [loadRecords]);
+
+  const handleRedeem = async (values: { code: string }) => {
+    if (!user) {
+      message.warning("请先登录后再兑换");
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await redeemCode(values.code);
+      message.success(`兑换成功，到账 ${formatCredits(result.credits_added)}`);
+      form.resetFields();
+      await Promise.all([refreshUser(), loadRecords()]);
+    } catch (error) {
+      message.error(getErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <UserLayout>
@@ -21,8 +68,9 @@ export function RedeemPage() {
             />
 
             <Form
+              form={form}
               layout="vertical"
-              onFinish={() => message.success("兑换成功")}
+              onFinish={handleRedeem}
             >
               <Form.Item
                 label="兑换码"
@@ -46,7 +94,7 @@ export function RedeemPage() {
                   </Space>
                 </Card>
               </Form.Item>
-              <Button htmlType="submit" type="primary" size="large">
+              <Button htmlType="submit" type="primary" size="large" loading={loading} disabled={!user}>
                 立即兑换
               </Button>
             </Form>
@@ -63,7 +111,8 @@ export function RedeemPage() {
               rowKey="id"
               pagination={false}
               scroll={{ x: 680 }}
-              dataSource={redeemCodes}
+              loading={loading}
+              dataSource={records}
               columns={[
                 { title: "兑换码", dataIndex: "code", key: "code" },
                 {

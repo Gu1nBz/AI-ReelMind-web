@@ -1,7 +1,9 @@
-import { Avatar, Grid, Layout, Menu, Space, Typography } from "antd";
+import { Avatar, Button, Grid, Layout, Menu, Space, Typography } from "antd";
 import type { PropsWithChildren } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { adminNav } from "@/mock/data";
+import { LogOut } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 const { Sider, Content } = Layout;
 const { useBreakpoint } = Grid;
@@ -10,6 +12,7 @@ export function AdminLayout({ children }: PropsWithChildren) {
   const location = useLocation();
   const navigate = useNavigate();
   const screens = useBreakpoint();
+  const { admin, logoutAdminSession } = useAuth();
 
   return (
     <Layout style={{ minHeight: "100vh", background: "transparent" }}>
@@ -63,13 +66,24 @@ export function AdminLayout({ children }: PropsWithChildren) {
               <Avatar style={{ background: "#ff6a1a" }}>A</Avatar>
               <div>
                 <Typography.Text strong style={{ display: "block", color: "#f8fafc" }}>
-                  admin
+                  {admin?.email ?? "admin"}
                 </Typography.Text>
                 <Typography.Text style={{ color: "rgba(248,250,252,0.68)" }}>
                   超级管理员
                 </Typography.Text>
               </div>
             </Space>
+            <Button
+              block
+              icon={<LogOut size={16} />}
+              style={{ marginTop: 14 }}
+              onClick={async () => {
+                await logoutAdminSession();
+                navigate("/auth", { replace: true });
+              }}
+            >
+              退出后台
+            </Button>
           </div>
         </div>
       </Sider>

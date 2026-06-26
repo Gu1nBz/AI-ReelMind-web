@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type ModelStatus = "available" | "maintenance" | "coming_soon";
+export type ModelStatus = "available" | "maintenance" | "coming_soon" | "disabled";
 export type BillingType = "per_second" | "per_generation";
 export type PromptMode = "basic" | "advanced";
 export type TaskStatus =
@@ -9,6 +9,7 @@ export type TaskStatus =
   | "processing"
   | "succeeded"
   | "failed"
+  | "timed_out"
   | "refunded";
 
 export interface NavItem {
@@ -69,6 +70,10 @@ export interface CreditPackage {
   description: string;
   features: string[];
   paymentProvider: string;
+  paymentUrl?: string;
+  buttonText?: string;
+  status?: "visible" | "hidden";
+  sortOrder?: number;
 }
 
 export interface UserProfile {
@@ -94,6 +99,7 @@ export interface GenerationTask {
   status: TaskStatus;
   thumbnail: string;
   videoUrl?: string;
+  coverUrl?: string;
   errorMessage?: string;
 }
 

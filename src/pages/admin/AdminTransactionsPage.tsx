@@ -1,12 +1,26 @@
-import { Card, Table } from "antd";
+import { Card, Table, message } from "antd";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { SectionHeader } from "@/components/common/SectionHeader";
-import { transactions } from "@/mock/data";
 import { formatAmount, formatCredits, titleCaseStatus } from "@/utils/format";
 import { useAnimeEntrance } from "@/hooks/useAnimeEntrance";
+import { useEffect, useState } from "react";
+import type { TransactionRecord } from "@/mock/types";
+import { listAdminTransactions } from "@/api/admin";
+import { toTransaction } from "@/api/adapters";
+import { getErrorMessage } from "@/utils/errors";
 
 export function AdminTransactionsPage() {
   const ref = useAnimeEntrance("[data-animate-item]");
+  const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    listAdminTransactions(1, 100)
+      .then((result) => setTransactions(result.list.map(toTransaction)))
+      .catch((error) => message.error(getErrorMessage(error)))
+      .finally(() => setLoading(false));
+  }, []);
 
   return (
     <AdminLayout>
@@ -23,6 +37,7 @@ export function AdminTransactionsPage() {
             rowKey="id"
             pagination={false}
             scroll={{ x: 960 }}
+            loading={loading}
             dataSource={transactions}
             columns={[
               { title: "时间", dataIndex: "createdAt", key: "createdAt" },

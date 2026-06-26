@@ -12,18 +12,19 @@ import {
   Select,
   Space,
   Tag,
-  Typography
+  Typography,
+  Upload
 } from "antd";
 import {
   CreditCard,
   ImageIcon,
   Info,
   Lock,
-  Mic,
   Sparkles,
+  Video,
   WandSparkles
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { UserLayout } from "@/components/layout/UserLayout";
 import { ModelSelector } from "@/components/forms/ModelSelector";
 import { PromptModeFields } from "@/components/forms/PromptModeFields";
@@ -32,19 +33,24 @@ import { MetricCard } from "@/components/ui/MetricCard";
 import { TaskList } from "@/components/sections/TaskList";
 import { SectionHeader } from "@/components/common/SectionHeader";
 import {
-  advancedPromptFields,
   comparisons,
-  models,
   quickGuides,
-  userProfile
+  advancedPromptFields as mockPromptFields,
+  models as mockModels
 } from "@/mock/data";
 import { useAnimeEntrance } from "@/hooks/useAnimeEntrance";
-import type { PromptMode } from "@/mock/types";
+import type { GenerationTask, PromptMode, VideoModel } from "@/mock/types";
 import { formatCredits } from "@/utils/format";
+import { estimateGeneration, listPublicModels, listPublicPromptFields } from "@/api/public";
+import { assetToInputAsset, toGenerationTask, toPromptField, toVideoModel } from "@/api/adapters";
+import { createUserTask, getTaskDownload, getTaskPreview, listUserTasks, uploadAsset } from "@/api/user";
+import type { ApiUploadedAsset } from "@/api/types";
+import { useAuth } from "@/hooks/useAuth";
+import { getErrorMessage } from "@/utils/errors";
 
 const { useBreakpoint } = Grid;
 
-function getModelDefaultValues(model: (typeof models)[number]) {
+function getModelDefaultValues(model: VideoModel) {
   return {
     ratio: model.aspectRatios[0],
     resolution: model.resolutions[0],
@@ -56,22 +62,87 @@ export function UserWorkspacePage() {
   const screens = useBreakpoint();
   const [form] = Form.useForm();
   const [mode, setMode] = useState<PromptMode>("advanced");
-  const [selectedModelId, setSelectedModelId] = useState(models[0].id);
+  const [models, setModels] = useState<VideoModel[]>(mockModels);
+  const [promptFields, setPromptFields] = useState(mockPromptFields);
+  const [tasks, setTasks] = useState<GenerationTask[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState(mockModels[0].id);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [estimateCost, setEstimateCost] = useState<number | null>(null);
+  const [assets, setAssets] = useState<ApiUploadedAsset[]>([]);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
   const entranceRef = useAnimeEntrance("[data-animate-item]");
+  const { user, refreshUser } = useAuth();
 
   const selectedModel = useMemo(
     () => models.find((item) => item.id === selectedModelId) ?? models[0],
-    [selectedModelId]
+    [models, selectedModelId]
   );
   const watchedResolution = Form.useWatch("resolution", form);
   const watchedDuration = Form.useWatch("duration", form);
+  const watchedPrompt = Form.useWatch("prompt", form);
+  const watchedAdvanced = Form.useWatch("advanced", form);
+
+  const loadWorkspace = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [modelResult, fieldResult] = await Promise.all([
+        listPublicModels(),
+        listPublicPromptFields()
+      ]);
+      const nextModels = modelResult.list.map(toVideoModel);
+      const nextFields = fieldResult.list.map(toPromptField);
+      if (nextModels.length > 0) {
+        setModels(nextModels);
+        setSelectedModelId((current) => nextModels.some((item) => item.id === current) ? current : nextModels[0].id);
+      }
+      if (nextFields.length > 0) {
+        setPromptFields(nextFields);
+      }
+    } catch (error) {
+      message.warning(getErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadTasks = useCallback(async () => {
+    if (!user) {
+      setTasks([]);
+      return;
+    }
+    try {
+      const result = await listUserTasks(1, 8);
+      const modelMap = new Map(models.map((item) => [item.id, item.name]));
+      setTasks(result.list.map((item) => toGenerationTask(item, modelMap)));
+    } catch (error) {
+      message.warning(getErrorMessage(error));
+    }
+  }, [models, user]);
 
   useEffect(() => {
-    form.setFieldsValue(getModelDefaultValues(selectedModel));
+    void loadWorkspace();
+    void refreshUser();
+  }, [loadWorkspace, refreshUser]);
+
+  useEffect(() => {
+    void loadTasks();
+  }, [loadTasks]);
+
+  useEffect(() => {
+    if (selectedModel) {
+      form.setFieldsValue(getModelDefaultValues(selectedModel));
+      setAssets([]);
+      setEstimateCost(null);
+    }
   }, [form, selectedModel]);
 
-  const estimatedCost = useMemo(() => {
+  const localEstimatedCost = useMemo(() => {
+    if (!selectedModel) {
+      return 0;
+    }
     const resolution = watchedResolution ?? selectedModel.resolutions[0];
     const duration = Number(
       watchedDuration ?? selectedModel.defaultDuration ?? selectedModel.durations[0] ?? 0
@@ -84,11 +155,164 @@ export function UserWorkspacePage() {
     return resolution === "720p" ? Math.round(base * 1.2) : base;
   }, [selectedModel, watchedDuration, watchedResolution]);
 
-  const capabilityLabels = selectedModel.inputCapabilities.map((item) => item.label);
+  const estimatedCost = estimateCost ?? localEstimatedCost;
+  const currentCredits = user?.credit_balance ?? 0;
+  const capabilityLabels = selectedModel?.inputCapabilities.map((item) => item.label) ?? [];
   const pricingText =
-    selectedModel.billingType === "per_second"
+    selectedModel?.billingType === "per_second"
       ? `${selectedModel.price} 积分 / 秒`
       : `${selectedModel.price} 积分 / 次`;
+  const canSubmit =
+    Boolean(selectedModel) &&
+    selectedModel.status === "available" &&
+    Boolean(user) &&
+    currentCredits >= estimatedCost &&
+    estimatedCost > 0;
+
+  const inputTypes = useMemo(() => {
+    const types = new Set<string>(["text"]);
+    assets.forEach((asset) => types.add(asset.asset_type));
+    return Array.from(types);
+  }, [assets]);
+
+  useEffect(() => {
+    if (!selectedModel) {
+      return;
+    }
+    const duration = Number(watchedDuration ?? selectedModel.defaultDuration ?? selectedModel.durations[0] ?? 0);
+    const resolution = watchedResolution ?? selectedModel.resolutions[0];
+    const ratio = form.getFieldValue("ratio") ?? selectedModel.aspectRatios[0];
+    if (!duration || !resolution || !ratio) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      estimateGeneration({
+        model_id: selectedModel.id,
+        prompt_mode: mode,
+        input_types: inputTypes,
+        aspect_ratio: ratio,
+        resolution,
+        duration_seconds: duration
+      })
+        .then((result) => setEstimateCost(result.credit_cost))
+        .catch(() => setEstimateCost(localEstimatedCost));
+    }, 260);
+    return () => window.clearTimeout(timer);
+  }, [form, inputTypes, localEstimatedCost, mode, selectedModel, watchedDuration, watchedResolution]);
+
+  const handleUpload = async (file: File, assetType: "image" | "video" | "audio") => {
+    if (!user) {
+      Modal.confirm({
+        title: "请先登录",
+        content: "登录后可以上传参考素材并提交生成任务。",
+        okText: "去登录",
+        cancelText: "取消",
+        onOk: () => {
+          window.location.href = "/auth";
+        }
+      });
+      return Upload.LIST_IGNORE;
+    }
+    try {
+      const uploaded = await uploadAsset(file, assetType);
+      setAssets((prev) => [...prev.filter((item) => item.asset_type !== assetType), uploaded]);
+      message.success("素材已上传");
+    } catch (error) {
+      message.error(getErrorMessage(error));
+    }
+    return Upload.LIST_IGNORE;
+  };
+
+  const buildPrompt = (values: { prompt?: string; advanced?: Record<string, string> }) => {
+    if (mode === "basic") {
+      return values.prompt?.trim() ?? "";
+    }
+    const advanced = values.advanced ?? {};
+    return promptFields
+      .map((field) => {
+        const value = advanced[field.key];
+        return value ? `${field.label}：${value}` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  };
+
+  const handleSubmit = async (values: { prompt?: string; advanced?: Record<string, string>; ratio: string; resolution: string; duration: number }) => {
+    if (!user) {
+      Modal.confirm({
+        title: "请先登录",
+        content: "登录后才能提交生成任务。",
+        okText: "去登录",
+        cancelText: "取消",
+        onOk: () => {
+          window.location.href = "/auth";
+        }
+      });
+      return;
+    }
+    if (!selectedModel) {
+      return;
+    }
+    const prompt = buildPrompt(values);
+    if (!prompt) {
+      message.warning("请填写提示词");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await createUserTask({
+        model_id: selectedModel.id,
+        prompt_mode: mode,
+        prompt,
+        advanced_prompt_json: values.advanced ?? {},
+        input_types: inputTypes,
+        input_assets: assets.map(assetToInputAsset),
+        aspect_ratio: values.ratio,
+        resolution: values.resolution,
+        duration_seconds: Number(values.duration)
+      });
+      message.success("任务已创建");
+      setAssets([]);
+      await Promise.all([refreshUser(), loadTasks()]);
+    } catch (error) {
+      message.error(getErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handlePreview = async (task: GenerationTask) => {
+    try {
+      const result = await getTaskPreview(task.id);
+      const url = result.preview_url || task.videoUrl;
+      if (!url) {
+        message.warning("当前任务暂无可预览视频");
+        return;
+      }
+      setPreviewUrl(url);
+      setPreviewOpen(true);
+    } catch (error) {
+      message.error(getErrorMessage(error));
+    }
+  };
+
+  const handleDownload = async (task: GenerationTask) => {
+    try {
+      const result = await getTaskDownload(task.id);
+      const url = result.download_url || task.videoUrl;
+      if (!url) {
+        message.warning("当前任务暂无可下载视频");
+        return;
+      }
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      message.error(getErrorMessage(error));
+    }
+  };
+
+  if (!selectedModel) {
+    return null;
+  }
 
   return (
     <UserLayout>
@@ -107,7 +331,7 @@ export function UserWorkspacePage() {
                       onClick={() => setGuideOpen(true)}
                     />
                     <Button type="primary" icon={<CreditCard size={16} />}>
-                      余额 {formatCredits(userProfile.credits)}
+                      {user ? `余额 ${formatCredits(currentCredits)}` : "未登录"}
                     </Button>
                   </Space>
                 }
@@ -123,7 +347,7 @@ export function UserWorkspacePage() {
                 layout="vertical"
                 form={form}
                 initialValues={getModelDefaultValues(selectedModel)}
-                onFinish={() => message.success("任务已创建")}
+                onFinish={handleSubmit}
               >
                 <Row gutter={[16, 16]}>
                   <Col span={24} xl={14}>
@@ -133,14 +357,30 @@ export function UserWorkspacePage() {
                   </Col>
                   <Col span={24} sm={12} xl={5}>
                     <Form.Item label="图像参考">
-                      <Button block>上传图片</Button>
+                      <Upload
+                        accept="image/*"
+                        showUploadList={false}
+                        beforeUpload={(file) => handleUpload(file, "image")}
+                        disabled={!selectedModel.inputCapabilities.some((item) => item.key === "image")}
+                      >
+                        <Button block disabled={!selectedModel.inputCapabilities.some((item) => item.key === "image")}>
+                          {assets.some((item) => item.asset_type === "image") ? "已上传图片" : "上传图片"}
+                        </Button>
+                      </Upload>
                     </Form.Item>
                   </Col>
                   <Col span={24} sm={12} xl={5}>
                     <Form.Item label="音频参考">
-                      <Button block disabled={!selectedModel.inputCapabilities.some((item) => item.key === "audio")}>
-                        上传音频
-                      </Button>
+                      <Upload
+                        accept="audio/*"
+                        showUploadList={false}
+                        beforeUpload={(file) => handleUpload(file, "audio")}
+                        disabled={!selectedModel.inputCapabilities.some((item) => item.key === "audio")}
+                      >
+                        <Button block disabled={!selectedModel.inputCapabilities.some((item) => item.key === "audio")}>
+                          {assets.some((item) => item.asset_type === "audio") ? "已上传音频" : "上传音频"}
+                        </Button>
+                      </Upload>
                     </Form.Item>
                   </Col>
                 </Row>
@@ -148,7 +388,7 @@ export function UserWorkspacePage() {
                 <PromptModeFields
                   mode={mode}
                   onModeChange={setMode}
-                  fields={advancedPromptFields}
+                  fields={promptFields}
                 />
 
                 <Divider />
@@ -194,7 +434,7 @@ export function UserWorkspacePage() {
                   <Col span={24} md={8}>
                     <MetricCard
                       title="当前积分"
-                      value={userProfile.credits.toString()}
+                      value={user ? currentCredits.toString() : "未登录"}
                       icon={<CreditCard size={16} />}
                     />
                   </Col>
@@ -213,7 +453,7 @@ export function UserWorkspacePage() {
                   <Col span={24} md={8}>
                     <MetricCard
                       title="状态"
-                      value={userProfile.credits >= estimatedCost ? "可提交" : "积分不足"}
+                      value={!user ? "需登录" : selectedModel.status !== "available" ? "模型不可用" : currentCredits >= estimatedCost ? "可提交" : "积分不足"}
                       icon={<Lock size={16} />}
                     />
                   </Col>
@@ -234,12 +474,13 @@ export function UserWorkspacePage() {
                   >
                     <Typography.Text strong>提交后立即扣费</Typography.Text>
                     <Space wrap>
-                      <Button size="large">保存草稿</Button>
+                      <Button size="large" onClick={() => message.success("草稿已保存在当前页面")}>保存草稿</Button>
                       <Button
                         type="primary"
                         size="large"
                         htmlType="submit"
-                        disabled={selectedModel.status !== "available" || userProfile.credits < estimatedCost}
+                        loading={submitting}
+                        disabled={!canSubmit}
                       >
                         立即生成
                       </Button>
@@ -262,7 +503,7 @@ export function UserWorkspacePage() {
                   <Tag>{selectedModel.status === "available" ? "可用" : selectedModel.status === "maintenance" ? "维护中" : "即将推出"}</Tag>
                   <Tag color="blue">{selectedModel.billingType === "per_second" ? "按秒计费" : "按次计费"}</Tag>
                 </Space>
-                <Typography.Text className="rm-muted">{selectedModel.description}</Typography.Text>
+                <Typography.Text className="rm-muted">{selectedModel.description || "模型参数由后台配置，按当前可用能力提交。"}</Typography.Text>
                 <Row gutter={[12, 12]}>
                   <Col span={12}>
                     <div className="rm-side-panel">
@@ -311,19 +552,19 @@ export function UserWorkspacePage() {
                     <Space align="start" size={10}>
                       <Sparkles size={16} color="#ff6a1a" style={{ marginTop: 2 }} />
                       <Typography.Text className="rm-muted">
-                        提示词支持基础输入和高级字段组织，说明里不再分模块，直接按一次完整创作描述来理解就可以。
+                        {mode === "basic" ? (watchedPrompt || "填写一段完整提示词后即可提交。") : "高级字段会合并为一段完整提示词提交。"}
                       </Typography.Text>
                     </Space>
                     <Space align="start" size={10}>
                       <ImageIcon size={16} color="#2f6bff" style={{ marginTop: 2 }} />
                       <Typography.Text className="rm-muted">
-                        图片参考按当前模型能力启用，用来稳定人物、商品或场景视觉。
+                        {assets.length ? `已上传 ${assets.length} 个参考素材：${assets.map((item) => item.file_name).join("、")}` : "按当前模型能力上传参考素材。"}
                       </Typography.Text>
                     </Space>
                     <Space align="start" size={10}>
-                      <Mic size={16} color="#7c3aed" style={{ marginTop: 2 }} />
+                      <Video size={16} color="#7c3aed" style={{ marginTop: 2 }} />
                       <Typography.Text className="rm-muted">
-                        音频参考仅在支持的模型下可用，适合卡点和节奏控制。
+                        {watchedAdvanced ? "提交前会按真实接口试算积分。" : "生成结果只在点击预览时加载视频。"}
                       </Typography.Text>
                     </Space>
                   </Space>
@@ -334,7 +575,7 @@ export function UserWorkspacePage() {
         </div>
 
         <div data-animate-item>
-          <TaskList />
+          <TaskList tasks={tasks} loading={loading} onPreview={handlePreview} onDownload={handleDownload} />
         </div>
       </div>
 
@@ -347,6 +588,22 @@ export function UserWorkspacePage() {
         <Typography.Paragraph style={{ margin: 0, lineHeight: 1.9 }}>
           {quickGuides[0].detail}
         </Typography.Paragraph>
+      </Modal>
+
+      <Modal
+        open={previewOpen}
+        title="视频预览"
+        footer={null}
+        width={860}
+        onCancel={() => {
+          setPreviewOpen(false);
+          setPreviewUrl("");
+        }}
+        destroyOnClose
+      >
+        {previewUrl ? (
+          <video controls src={previewUrl} style={{ width: "100%", borderRadius: 12, background: "#000" }} />
+        ) : null}
       </Modal>
     </UserLayout>
   );

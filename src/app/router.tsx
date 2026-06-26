@@ -15,6 +15,7 @@ import { AdminUsersPage } from "@/pages/admin/AdminUsersPage";
 import { AdminTasksPage } from "@/pages/admin/AdminTasksPage";
 import { AdminTransactionsPage } from "@/pages/admin/AdminTransactionsPage";
 import { AdminPromptFieldsPage } from "@/pages/admin/AdminPromptFieldsPage";
+import { AdminGuard } from "@/components/auth/AdminGuard";
 
 export function AppRouter() {
   return (
@@ -26,15 +27,15 @@ export function AppRouter() {
       <Route path="/profile" element={<ProfilePage />} />
       <Route path="/contact" element={<ContactPage />} />
       <Route path="/auth" element={<AuthPage />} />
-      <Route path="/admin" element={<AdminOverviewPage />} />
-      <Route path="/admin/models" element={<AdminModelsPage />} />
-      <Route path="/admin/providers" element={<AdminProvidersPage />} />
-      <Route path="/admin/prompt-fields" element={<AdminPromptFieldsPage />} />
-      <Route path="/admin/packages" element={<AdminPackagesPage />} />
-      <Route path="/admin/redeem-codes" element={<AdminRedeemCodesPage />} />
-      <Route path="/admin/users" element={<AdminUsersPage />} />
-      <Route path="/admin/tasks" element={<AdminTasksPage />} />
-      <Route path="/admin/transactions" element={<AdminTransactionsPage />} />
+      <Route path="/admin" element={<AdminGuard><AdminOverviewPage /></AdminGuard>} />
+      <Route path="/admin/models" element={<AdminGuard><AdminModelsPage /></AdminGuard>} />
+      <Route path="/admin/providers" element={<AdminGuard><AdminProvidersPage /></AdminGuard>} />
+      <Route path="/admin/prompt-fields" element={<AdminGuard><AdminPromptFieldsPage /></AdminGuard>} />
+      <Route path="/admin/packages" element={<AdminGuard><AdminPackagesPage /></AdminGuard>} />
+      <Route path="/admin/redeem-codes" element={<AdminGuard><AdminRedeemCodesPage /></AdminGuard>} />
+      <Route path="/admin/users" element={<AdminGuard><AdminUsersPage /></AdminGuard>} />
+      <Route path="/admin/tasks" element={<AdminGuard><AdminTasksPage /></AdminGuard>} />
+      <Route path="/admin/transactions" element={<AdminGuard><AdminTransactionsPage /></AdminGuard>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
