@@ -9,7 +9,7 @@ import { getErrorMessage } from "@/utils/errors";
 import { useAuth } from "@/hooks/useAuth";
 
 export function AuthPage() {
-  const [mode, setMode] = useState<"login" | "code">("login");
+  const [mode, setMode] = useState<"login" | "code">("code");
   const [showPassword, setShowPassword] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -137,19 +137,24 @@ export function AuthPage() {
             </Form.Item>
 
             {mode === "code" ? (
-              <Row gutter={12}>
-                <Form.Item
-                  style={{ flex: 1 }}
-                  label="验证码"
-                  name="code"
-                  rules={[{ required: true, message: "请输入验证码" }]}
-                >
-                  <Input placeholder="6 位验证码" />
-                </Form.Item>
-                <Form.Item label=" " colon={false}>
-                  <Button loading={sendingCode} onClick={handleSendCode}>发送验证码</Button>
-                </Form.Item>
-              </Row>
+              <>
+                <Row gutter={12}>
+                  <Form.Item
+                    style={{ flex: 1 }}
+                    label="验证码"
+                    name="code"
+                    rules={[{ required: true, message: "请输入验证码" }]}
+                  >
+                    <Input placeholder="6 位验证码" />
+                  </Form.Item>
+                  <Form.Item label=" " colon={false}>
+                    <Button loading={sendingCode} onClick={handleSendCode}>发送验证码</Button>
+                  </Form.Item>
+                </Row>
+                <Typography.Text className="rm-muted" style={{ display: "block", marginTop: -8, marginBottom: 18 }}>
+                  首次验证码登录会自动创建账号。
+                </Typography.Text>
+              </>
             ) : null}
 
             {mode === "login" ? (
