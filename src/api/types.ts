@@ -40,6 +40,8 @@ export interface ApiAdmin {
 export interface ApiAuthResponse {
   access_token: string;
   refresh_token: string;
+  admin_access_token?: string;
+  admin_refresh_token?: string;
   user?: ApiUser;
   admin?: ApiAdmin;
 }
@@ -291,4 +293,3 @@ export interface ApiOverview {
     created_at: string;
   }>;
 }
-

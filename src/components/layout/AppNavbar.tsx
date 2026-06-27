@@ -56,7 +56,7 @@ export function AppNavbar() {
         </>
       ) : (
         <Button type="primary" icon={<LogIn size={16} />} onClick={() => navigate("/auth")}>
-          登录 / 注册
+          登录
         </Button>
       )}
     </Space>

@@ -2,16 +2,14 @@ import { App } from "antd";
 import type { PropsWithChildren } from "react";
 import { useCallback, useMemo, useState } from "react";
 import {
-  adminLogin as apiAdminLogin,
   loginByCode as apiLoginByCode,
   loginByPassword as apiLoginByPassword,
   logoutAdmin,
-  logoutUser,
-  register as apiRegister
+  logoutUser
 } from "@/api/auth";
 import { getAdminMe } from "@/api/admin";
 import { getUserMe } from "@/api/user";
-import type { ApiAdmin, ApiUser } from "@/api/types";
+import type { ApiAdmin, ApiAuthResponse, ApiUser } from "@/api/types";
 import { AuthContext, type AuthContextValue } from "@/context/auth";
 import {
   clearSession,
@@ -74,7 +72,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }, []);
 
-  const handleUserAuth = useCallback(async (promise: Promise<{ access_token: string; refresh_token: string; user?: ApiUser }>) => {
+  const handleUserAuth = useCallback(async (promise: Promise<ApiAuthResponse>) => {
     const response = await promise;
     if (!response.user) {
       throw new Error("登录响应缺少用户信息");
@@ -83,30 +81,37 @@ export function AuthProvider({ children }: PropsWithChildren) {
     saveSubject("user", response.user);
     setUser(response.user);
     setUserReady(true);
-    return response.user;
-  }, []);
-
-  const handleAdminAuth = useCallback(async (promise: Promise<{ access_token: string; refresh_token: string; admin?: ApiAdmin }>) => {
-    const response = await promise;
-    if (!response.admin) {
-      throw new Error("登录响应缺少管理员信息");
+    if (response.admin && response.admin_access_token && response.admin_refresh_token) {
+      saveTokens("admin", response.admin_access_token, response.admin_refresh_token);
+      saveSubject("admin", response.admin);
+      setAdmin(response.admin);
+    } else {
+      clearSession("admin");
+      setAdmin(null);
     }
-    saveTokens("admin", response.access_token, response.refresh_token);
-    saveSubject("admin", response.admin);
-    setAdmin(response.admin);
     setAdminReady(true);
-    return response.admin;
+    return response.user;
   }, []);
 
   const logout = useCallback(async () => {
     const refreshToken = getRefreshToken("user");
+    const adminRefreshToken = getRefreshToken("admin");
     clearSession("user");
+    clearSession("admin");
     setUser(null);
+    setAdmin(null);
     if (refreshToken) {
       try {
         await logoutUser(refreshToken);
       } catch {
         message.warning("本地已退出，服务端会话稍后自动过期");
+      }
+    }
+    if (adminRefreshToken) {
+      try {
+        await logoutAdmin(adminRefreshToken);
+      } catch {
+        message.warning("本地已退出，后台会话稍后自动过期");
       }
     }
   }, [message]);
@@ -133,14 +138,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
     refreshAdmin,
     loginByPassword: (email, password) => handleUserAuth(apiLoginByPassword(email, password)),
     loginByCode: (email, code) => handleUserAuth(apiLoginByCode(email, code)),
-    register: (email, password, emailCode) => handleUserAuth(apiRegister(email, password, emailCode)),
-    loginAdmin: (email, password) => handleAdminAuth(apiAdminLogin(email, password)),
     logout,
     logoutAdminSession
   }), [
     admin,
     adminReady,
-    handleAdminAuth,
     handleUserAuth,
     logout,
     logoutAdminSession,

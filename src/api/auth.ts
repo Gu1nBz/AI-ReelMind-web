@@ -1,7 +1,7 @@
 import { apiRequest } from "@/api/client";
 import type { ApiAuthResponse, ApiEmailCodeResponse } from "@/api/types";
 
-export function sendEmailCode(email: string, scene: "login" | "register" | "reset_password") {
+export function sendEmailCode(email: string, scene: "login" | "reset_password") {
   return apiRequest<ApiEmailCodeResponse>("/auth/email-code/send", {
     method: "POST",
     body: { email, scene }
@@ -22,13 +22,6 @@ export function loginByCode(email: string, code: string) {
   });
 }
 
-export function register(email: string, password: string, emailCode: string) {
-  return apiRequest<ApiAuthResponse>("/auth/register", {
-    method: "POST",
-    body: { email, password, email_code: emailCode }
-  });
-}
-
 export function requestPasswordReset(email: string) {
   return apiRequest<ApiEmailCodeResponse>("/auth/password/reset/request", {
     method: "POST",
@@ -40,13 +33,6 @@ export function confirmPasswordReset(email: string, code: string, password: stri
   return apiRequest<{ reset: boolean }>("/auth/password/reset/confirm", {
     method: "POST",
     body: { email, code, password }
-  });
-}
-
-export function adminLogin(email: string, password: string) {
-  return apiRequest<ApiAuthResponse>("/admin/auth/login", {
-    method: "POST",
-    body: { email, password }
   });
 }
 
@@ -67,4 +53,3 @@ export function logoutAdmin(refreshToken: string) {
     retryOnUnauthorized: false
   });
 }
-
