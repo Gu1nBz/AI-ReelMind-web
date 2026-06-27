@@ -13,7 +13,7 @@ const DEFAULT_API_BASE_URL = import.meta.env.DEV
   : "/api/v1";
 
 export const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ??
+  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim().replace(/\/$/, "") ||
   DEFAULT_API_BASE_URL;
 
 export class ApiError extends Error {
@@ -39,8 +39,20 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
   retryOnUnauthorized?: boolean;
 }
 
+function isAbsoluteURL(value: string) {
+  return /^https?:\/\//i.test(value);
+}
+
+function apiURL(path: string) {
+  if (isAbsoluteURL(path)) {
+    return path;
+  }
+  return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
 function urlWithParams(path: string, params?: RequestOptions["params"]) {
-  const url = new URL(path.startsWith("http") ? path : `${API_BASE_URL}${path}`);
+  const base = typeof window === "undefined" ? "http://localhost" : window.location.origin;
+  const url = new URL(apiURL(path), base);
   Object.entries(params ?? {}).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== "") {
       url.searchParams.set(key, String(value));
@@ -81,7 +93,7 @@ async function refreshSession(scope: AuthScope) {
     return false;
   }
 
-  const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+  const response = await fetch(apiURL("/auth/refresh"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refresh_token: refreshToken })
@@ -156,4 +168,3 @@ export async function downloadFile(path: string, filename: string, auth: AuthSco
   link.click();
   URL.revokeObjectURL(url);
 }
-
