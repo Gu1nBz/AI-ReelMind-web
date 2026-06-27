@@ -73,7 +73,7 @@ export function UserWorkspacePage() {
   const entranceRef = useAnimeEntrance("[data-animate-item]");
   const { user, refreshUser } = useAuth();
 
-  const selectedModel = useMemo(
+  const selectedModel = useMemo<VideoModel | undefined>(
     () => models.find((item) => item.id === selectedModelId) ?? models[0],
     [models, selectedModelId]
   );
@@ -137,12 +137,13 @@ export function UserWorkspacePage() {
   const estimatedCost = estimateCost ?? 0;
   const currentCredits = user?.credit_balance ?? 0;
   const capabilityLabels = selectedModel?.inputCapabilities.map((item) => item.label) ?? [];
-  const pricingText =
-    selectedModel?.billingType === "per_second"
+  const pricingText = selectedModel
+    ? selectedModel.billingType === "per_second"
       ? `${selectedModel.price} 积分 / 秒`
-      : `${selectedModel.price} 积分 / 次`;
+      : `${selectedModel.price} 积分 / 次`
+    : "";
   const canSubmit =
-    Boolean(selectedModel) &&
+    selectedModel !== undefined &&
     selectedModel.status === "available" &&
     Boolean(user) &&
     estimateCost !== null &&
