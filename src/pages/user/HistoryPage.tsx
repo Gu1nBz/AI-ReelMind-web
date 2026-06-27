@@ -5,7 +5,7 @@ import { TaskList } from "@/components/sections/TaskList";
 import { SectionHeader } from "@/components/common/SectionHeader";
 import { useAnimeEntrance } from "@/hooks/useAnimeEntrance";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { GenerationTask } from "@/mock/types";
+import type { GenerationTask } from "@/types/domain";
 import { getTaskDownload, getTaskPreview, listUserTasks } from "@/api/user";
 import { listPublicModels } from "@/api/public";
 import { toGenerationTask, toVideoModel } from "@/api/adapters";

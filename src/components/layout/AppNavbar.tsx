@@ -8,7 +8,7 @@ import {
   UserRound
 } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { siteNav } from "@/mock/data";
+import { siteNav } from "@/config/navigation";
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 

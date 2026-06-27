@@ -4,7 +4,7 @@ import { UserLayout } from "@/components/layout/UserLayout";
 import { SectionHeader } from "@/components/common/SectionHeader";
 import { useAnimeEntrance } from "@/hooks/useAnimeEntrance";
 import { useEffect, useState } from "react";
-import type { CreditPackage } from "@/mock/types";
+import type { CreditPackage } from "@/types/domain";
 import { listPublicPackages } from "@/api/public";
 import { toCreditPackage } from "@/api/adapters";
 import { getErrorMessage } from "@/utils/errors";

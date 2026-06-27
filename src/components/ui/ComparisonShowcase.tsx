@@ -1,7 +1,7 @@
 import { Button, Card, Space, Typography } from "antd";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { DemoComparison } from "@/mock/types";
+import type { DemoComparison } from "@/types/domain";
 
 interface ComparisonShowcaseProps {
   items: DemoComparison[];

@@ -4,7 +4,7 @@ import { SectionHeader } from "@/components/common/SectionHeader";
 import { StatusTag } from "@/components/common/StatusTag";
 import { useAnimeEntrance } from "@/hooks/useAnimeEntrance";
 import { useCallback, useEffect, useState } from "react";
-import type { GenerationTask } from "@/mock/types";
+import type { GenerationTask } from "@/types/domain";
 import { listAdminTasks, markTaskFailed, refundTask } from "@/api/admin";
 import { listPublicModels } from "@/api/public";
 import { toGenerationTask, toVideoModel } from "@/api/adapters";

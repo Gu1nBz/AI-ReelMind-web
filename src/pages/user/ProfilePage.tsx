@@ -5,7 +5,7 @@ import { SectionHeader } from "@/components/common/SectionHeader";
 import { formatAmount, formatCredits, titleCaseStatus } from "@/utils/format";
 import { useAnimeEntrance } from "@/hooks/useAnimeEntrance";
 import { useEffect, useState } from "react";
-import type { TransactionRecord } from "@/mock/types";
+import type { TransactionRecord } from "@/types/domain";
 import { listUserTransactions } from "@/api/user";
 import { toTransaction } from "@/api/adapters";
 import { getErrorMessage } from "@/utils/errors";

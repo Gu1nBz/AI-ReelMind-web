@@ -1,8 +1,29 @@
 import { Card, Col, Row, Space, Typography } from "antd";
+import { AudioLines, Box, MessageSquareText } from "lucide-react";
 import { UserLayout } from "@/components/layout/UserLayout";
 import { SectionHeader } from "@/components/common/SectionHeader";
-import { supportCards } from "@/mock/data";
 import { useAnimeEntrance } from "@/hooks/useAnimeEntrance";
+
+const supportCards = [
+  {
+    title: "商务合作",
+    detail: "",
+    action: "bd@reelmind.ai",
+    icon: <Box size={28} />
+  },
+  {
+    title: "产品反馈",
+    detail: "",
+    action: "feedback@reelmind.ai",
+    icon: <MessageSquareText size={28} />
+  },
+  {
+    title: "创作支持群",
+    detail: "",
+    action: "加入微信社群",
+    icon: <AudioLines size={28} />
+  }
+];
 
 export function ContactPage() {
   const ref = useAnimeEntrance("[data-animate-item]");

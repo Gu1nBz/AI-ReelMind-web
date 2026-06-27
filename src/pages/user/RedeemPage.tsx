@@ -6,7 +6,7 @@ import { StatusTag } from "@/components/common/StatusTag";
 import { formatCredits } from "@/utils/format";
 import { useAnimeEntrance } from "@/hooks/useAnimeEntrance";
 import { useCallback, useEffect, useState } from "react";
-import type { RedeemCodeRecord } from "@/mock/types";
+import type { RedeemCodeRecord } from "@/types/domain";
 import { listRedeemRecords, redeemCode } from "@/api/user";
 import { toRedeemRecord } from "@/api/adapters";
 import { getErrorMessage } from "@/utils/errors";

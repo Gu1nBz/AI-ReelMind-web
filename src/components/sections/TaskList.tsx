@@ -2,7 +2,7 @@ import { Button, Card, Empty, Image, List, Space, Typography } from "antd";
 import { Download, PlayCircle } from "lucide-react";
 import { StatusTag } from "@/components/common/StatusTag";
 import { formatCredits } from "@/utils/format";
-import type { GenerationTask } from "@/mock/types";
+import type { GenerationTask } from "@/types/domain";
 
 interface TaskListProps {
   tasks: GenerationTask[];

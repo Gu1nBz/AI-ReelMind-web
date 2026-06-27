@@ -3,6 +3,7 @@ import {
   Card,
   Col,
   Divider,
+  Empty,
   Form,
   Grid,
   Modal,
@@ -28,18 +29,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { UserLayout } from "@/components/layout/UserLayout";
 import { ModelSelector } from "@/components/forms/ModelSelector";
 import { PromptModeFields } from "@/components/forms/PromptModeFields";
-import { ComparisonShowcase } from "@/components/ui/ComparisonShowcase";
 import { MetricCard } from "@/components/ui/MetricCard";
 import { TaskList } from "@/components/sections/TaskList";
 import { SectionHeader } from "@/components/common/SectionHeader";
-import {
-  comparisons,
-  quickGuides,
-  advancedPromptFields as mockPromptFields,
-  models as mockModels
-} from "@/mock/data";
 import { useAnimeEntrance } from "@/hooks/useAnimeEntrance";
-import type { GenerationTask, PromptMode, VideoModel } from "@/mock/types";
+import type { AdvancedPromptField, GenerationTask, PromptMode, VideoModel } from "@/types/domain";
 import { formatCredits } from "@/utils/format";
 import { estimateGeneration, listPublicModels, listPublicPromptFields } from "@/api/public";
 import { assetToInputAsset, toGenerationTask, toPromptField, toVideoModel } from "@/api/adapters";
@@ -49,6 +43,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { getErrorMessage } from "@/utils/errors";
 
 const { useBreakpoint } = Grid;
+
+const WORKSPACE_GUIDE =
+  "先选择模型，再按当前需求一次性填写提示词、参考素材和生成参数即可；系统会根据所选模型自动显示真实可用输入项、通过后端接口试算预计积分，并在提交成功后立即创建任务，失败任务会自动退款。";
 
 function getModelDefaultValues(model: VideoModel) {
   return {
@@ -62,10 +59,10 @@ export function UserWorkspacePage() {
   const screens = useBreakpoint();
   const [form] = Form.useForm();
   const [mode, setMode] = useState<PromptMode>("advanced");
-  const [models, setModels] = useState<VideoModel[]>(mockModels);
-  const [promptFields, setPromptFields] = useState(mockPromptFields);
+  const [models, setModels] = useState<VideoModel[]>([]);
+  const [promptFields, setPromptFields] = useState<AdvancedPromptField[]>([]);
   const [tasks, setTasks] = useState<GenerationTask[]>([]);
-  const [selectedModelId, setSelectedModelId] = useState(mockModels[0].id);
+  const [selectedModelId, setSelectedModelId] = useState("");
   const [guideOpen, setGuideOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -94,14 +91,12 @@ export function UserWorkspacePage() {
       ]);
       const nextModels = modelResult.list.map(toVideoModel);
       const nextFields = fieldResult.list.map(toPromptField);
-      if (nextModels.length > 0) {
-        setModels(nextModels);
-        setSelectedModelId((current) => nextModels.some((item) => item.id === current) ? current : nextModels[0].id);
-      }
-      if (nextFields.length > 0) {
-        setPromptFields(nextFields);
-      }
+      setModels(nextModels);
+      setSelectedModelId((current) => nextModels.some((item) => item.id === current) ? current : nextModels[0]?.id ?? "");
+      setPromptFields(nextFields);
     } catch (error) {
+      setModels([]);
+      setPromptFields([]);
       message.warning(getErrorMessage(error));
     } finally {
       setLoading(false);
@@ -139,23 +134,7 @@ export function UserWorkspacePage() {
     }
   }, [form, selectedModel]);
 
-  const localEstimatedCost = useMemo(() => {
-    if (!selectedModel) {
-      return 0;
-    }
-    const resolution = watchedResolution ?? selectedModel.resolutions[0];
-    const duration = Number(
-      watchedDuration ?? selectedModel.defaultDuration ?? selectedModel.durations[0] ?? 0
-    );
-    const base =
-      selectedModel.billingType === "per_second"
-        ? selectedModel.price * duration
-        : selectedModel.price;
-
-    return resolution === "720p" ? Math.round(base * 1.2) : base;
-  }, [selectedModel, watchedDuration, watchedResolution]);
-
-  const estimatedCost = estimateCost ?? localEstimatedCost;
+  const estimatedCost = estimateCost ?? 0;
   const currentCredits = user?.credit_balance ?? 0;
   const capabilityLabels = selectedModel?.inputCapabilities.map((item) => item.label) ?? [];
   const pricingText =
@@ -166,6 +145,7 @@ export function UserWorkspacePage() {
     Boolean(selectedModel) &&
     selectedModel.status === "available" &&
     Boolean(user) &&
+    estimateCost !== null &&
     currentCredits >= estimatedCost &&
     estimatedCost > 0;
 
@@ -185,6 +165,7 @@ export function UserWorkspacePage() {
     if (!duration || !resolution || !ratio) {
       return;
     }
+    setEstimateCost(null);
     const timer = window.setTimeout(() => {
       estimateGeneration({
         model_id: selectedModel.id,
@@ -195,10 +176,10 @@ export function UserWorkspacePage() {
         duration_seconds: duration
       })
         .then((result) => setEstimateCost(result.credit_cost))
-        .catch(() => setEstimateCost(localEstimatedCost));
+        .catch(() => setEstimateCost(null));
     }, 260);
     return () => window.clearTimeout(timer);
-  }, [form, inputTypes, localEstimatedCost, mode, selectedModel, watchedDuration, watchedResolution]);
+  }, [form, inputTypes, mode, selectedModel, watchedDuration, watchedResolution]);
 
   const handleUpload = async (file: File, assetType: "image" | "video" | "audio") => {
     if (!user) {
@@ -311,7 +292,15 @@ export function UserWorkspacePage() {
   };
 
   if (!selectedModel) {
-    return null;
+    return (
+      <UserLayout>
+        <div className="rm-page-shell">
+          <Card bordered={false} className="rm-page-section">
+            <Empty description={loading ? "正在加载真实模型配置" : "暂无可用模型，请稍后再试"} />
+          </Card>
+        </div>
+      </UserLayout>
+    );
   }
 
   return (
@@ -441,7 +430,7 @@ export function UserWorkspacePage() {
                   <Col span={24} md={8}>
                     <MetricCard
                       title="预计消耗"
-                      value={estimatedCost.toString()}
+                      value={estimateCost === null ? "待试算" : estimatedCost.toString()}
                       delta={
                         selectedModel.billingType === "per_second"
                           ? `${selectedModel.price} 积分 / 秒`
@@ -453,7 +442,7 @@ export function UserWorkspacePage() {
                   <Col span={24} md={8}>
                     <MetricCard
                       title="状态"
-                      value={!user ? "需登录" : selectedModel.status !== "available" ? "模型不可用" : currentCredits >= estimatedCost ? "可提交" : "积分不足"}
+                      value={!user ? "需登录" : selectedModel.status !== "available" ? "模型不可用" : estimateCost === null ? "等待试算" : currentCredits >= estimatedCost ? "可提交" : "积分不足"}
                       icon={<Lock size={16} />}
                     />
                   </Col>
@@ -492,7 +481,6 @@ export function UserWorkspacePage() {
           </Card>
 
           <div className="rm-stack">
-            <ComparisonShowcase items={comparisons} />
             <Card bordered={false} className="rm-page-section" style={{ padding: 18 }}>
               <Space direction="vertical" size={16} style={{ width: "100%" }}>
                 <Typography.Title level={4} style={{ margin: 0 }}>
@@ -586,7 +574,7 @@ export function UserWorkspacePage() {
         onCancel={() => setGuideOpen(false)}
       >
         <Typography.Paragraph style={{ margin: 0, lineHeight: 1.9 }}>
-          {quickGuides[0].detail}
+          {WORKSPACE_GUIDE}
         </Typography.Paragraph>
       </Modal>
 

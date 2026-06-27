@@ -1,7 +1,7 @@
 import { Avatar, Button, Grid, Layout, Menu, Space, Typography } from "antd";
 import type { PropsWithChildren } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { adminNav } from "@/mock/data";
+import { adminNav } from "@/config/navigation";
 import { LogOut } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 

@@ -1,6 +1,6 @@
 import { Card, Col, Row, Space, Typography } from "antd";
 import { ImageIcon, Mic, Sparkles, Video } from "lucide-react";
-import type { VideoModel } from "@/mock/types";
+import type { VideoModel } from "@/types/domain";
 import { StatusTag } from "@/components/common/StatusTag";
 
 interface ModelSelectorProps {

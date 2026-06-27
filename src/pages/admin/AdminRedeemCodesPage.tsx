@@ -4,7 +4,7 @@ import { SectionHeader } from "@/components/common/SectionHeader";
 import { StatusTag } from "@/components/common/StatusTag";
 import { useAnimeEntrance } from "@/hooks/useAnimeEntrance";
 import { useCallback, useEffect, useState } from "react";
-import type { RedeemCodeRecord } from "@/mock/types";
+import type { RedeemCodeRecord } from "@/types/domain";
 import { batchCreateRedeemCodes, createRedeemCode, disableRedeemCode, exportRedeemCodes, listRedeemCodes } from "@/api/admin";
 import { toAdminRedeemCode } from "@/api/adapters";
 import { getErrorMessage } from "@/utils/errors";

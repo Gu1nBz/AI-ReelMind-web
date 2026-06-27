@@ -17,7 +17,7 @@ import type {
   TransactionRecord,
   UserProfile,
   VideoModel
-} from "@/mock/types";
+} from "@/types/domain";
 
 const inputLabels: Record<string, string> = {
   text: "文本",
@@ -181,4 +181,3 @@ export function formatDateTime(value?: string) {
     minute: "2-digit"
   });
 }
-

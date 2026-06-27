@@ -1,5 +1,5 @@
 import { Col, Form, Input, Row, Select, Segmented, Space } from "antd";
-import type { AdvancedPromptField, PromptMode } from "@/mock/types";
+import type { AdvancedPromptField, PromptMode } from "@/types/domain";
 
 interface PromptModeFieldsProps {
   mode: PromptMode;
