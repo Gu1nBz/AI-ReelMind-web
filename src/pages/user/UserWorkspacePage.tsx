@@ -47,6 +47,8 @@ const { useBreakpoint } = Grid;
 const WORKSPACE_GUIDE =
   "先选择模型，再按当前需求一次性填写提示词、参考素材和生成参数即可；系统会根据所选模型自动显示真实可用输入项、通过后端接口试算预计积分，并在提交成功后立即创建任务，失败任务会自动退款。";
 
+const ACTIVE_TASK_STATUSES = new Set(["pending", "submitted", "processing"]);
+
 function getModelDefaultValues(model: VideoModel) {
   return {
     ratio: model.aspectRatios[0],
@@ -103,7 +105,7 @@ export function UserWorkspacePage() {
     }
   }, []);
 
-  const loadTasks = useCallback(async () => {
+  const loadTasks = useCallback(async (options: { silent?: boolean } = {}) => {
     if (!user) {
       setTasks([]);
       return;
@@ -113,7 +115,9 @@ export function UserWorkspacePage() {
       const modelMap = new Map(models.map((item) => [item.id, item.name]));
       setTasks(result.list.map((item) => toGenerationTask(item, modelMap)));
     } catch (error) {
-      message.warning(getErrorMessage(error));
+      if (!options.silent) {
+        message.warning(getErrorMessage(error));
+      }
     }
   }, [models, user]);
 
@@ -124,6 +128,30 @@ export function UserWorkspacePage() {
 
   useEffect(() => {
     void loadTasks();
+  }, [loadTasks]);
+
+  const hasActiveTask = tasks.some((task) => ACTIVE_TASK_STATUSES.has(task.status));
+
+  useEffect(() => {
+    if (!user || !hasActiveTask) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void loadTasks({ silent: true });
+      }
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [hasActiveTask, loadTasks, user]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void loadTasks({ silent: true });
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [loadTasks]);
 
   useEffect(() => {
@@ -464,7 +492,6 @@ export function UserWorkspacePage() {
                   >
                     <Typography.Text strong>提交后立即扣费</Typography.Text>
                     <Space wrap>
-                      <Button size="large" onClick={() => message.success("草稿已保存在当前页面")}>保存草稿</Button>
                       <Button
                         type="primary"
                         size="large"
