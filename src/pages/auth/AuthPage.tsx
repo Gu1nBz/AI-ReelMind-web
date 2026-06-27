@@ -12,6 +12,7 @@ export function AuthPage() {
   const [mode, setMode] = useState<"login" | "code">("code");
   const [showPassword, setShowPassword] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
+  const [sendingResetCode, setSendingResetCode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const navigate = useNavigate();
@@ -74,8 +75,7 @@ export function AuthPage() {
     setSubmitting(true);
     try {
       if (!values.code || !values.password) {
-        const result = await sendEmailCode(values.email, "reset_password");
-        message.success(result.debug_code ? `重置验证码：${result.debug_code}` : "重置验证码已发送");
+        message.warning("请填写验证码和新密码");
         return;
       }
       await confirmPasswordReset(values.email, values.code, values.password);
@@ -86,6 +86,23 @@ export function AuthPage() {
       message.error(getErrorMessage(error));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleSendResetCode = async () => {
+    const email = resetForm.getFieldValue("email") as string | undefined;
+    if (!email) {
+      message.warning("请先输入邮箱");
+      return;
+    }
+    setSendingResetCode(true);
+    try {
+      const result = await sendEmailCode(email, "reset_password");
+      message.success(result.debug_code ? `重置验证码：${result.debug_code}` : "重置验证码已发送");
+    } catch (error) {
+      message.error(getErrorMessage(error));
+    } finally {
+      setSendingResetCode(false);
     }
   };
 
@@ -202,10 +219,20 @@ export function AuthPage() {
           <Form.Item label="电子邮箱" name="email" rules={[{ required: true, message: "请输入邮箱" }, { type: "email", message: "邮箱格式不正确" }]}>
             <Input prefix={<Mail size={16} />} placeholder="输入需要重置的邮箱" />
           </Form.Item>
-          <Form.Item label="验证码" name="code">
-            <Input placeholder="不填验证码时会发送重置验证码" />
-          </Form.Item>
-          <Form.Item label="新密码" name="password">
+          <Row gutter={12}>
+            <Form.Item
+              style={{ flex: 1 }}
+              label="验证码"
+              name="code"
+              rules={[{ required: true, message: "请输入验证码" }]}
+            >
+              <Input placeholder="6 位验证码" />
+            </Form.Item>
+            <Form.Item label=" " colon={false}>
+              <Button loading={sendingResetCode} onClick={handleSendResetCode}>发送验证码</Button>
+            </Form.Item>
+          </Row>
+          <Form.Item label="新密码" name="password" rules={[{ required: true, message: "请输入新密码" }]}>
             <Input.Password placeholder="收到验证码后填写新密码" />
           </Form.Item>
         </Form>
