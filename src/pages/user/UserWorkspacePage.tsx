@@ -10,6 +10,7 @@ import {
   Input,
   message,
   Row,
+  Segmented,
   Select,
   Space,
   Tag,
@@ -25,7 +26,7 @@ import {
   Video,
   WandSparkles
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { UserLayout } from "@/components/layout/UserLayout";
 import { ModelSelector } from "@/components/forms/ModelSelector";
 import { PromptModeFields } from "@/components/forms/PromptModeFields";
@@ -33,11 +34,34 @@ import { MetricCard } from "@/components/ui/MetricCard";
 import { TaskList } from "@/components/sections/TaskList";
 import { SectionHeader } from "@/components/common/SectionHeader";
 import { useAnimeEntrance } from "@/hooks/useAnimeEntrance";
-import type { AdvancedPromptField, GenerationTask, PromptMode, VideoModel } from "@/types/domain";
+import type { AdvancedPromptField, GenerationTask, ImageModel, PromptMode, VideoModel } from "@/types/domain";
 import { formatCredits } from "@/utils/format";
-import { estimateGeneration, listPublicModels, listPublicPromptFields } from "@/api/public";
-import { assetToInputAsset, toGenerationTask, toPromptField, toVideoModel } from "@/api/adapters";
-import { createUserTask, getTaskDownload, getTaskPreview, listUserTasks, uploadAsset } from "@/api/user";
+import {
+  estimateGeneration,
+  estimateImageGeneration,
+  listPublicImageModels,
+  listPublicModels,
+  listPublicPromptFields
+} from "@/api/public";
+import {
+  assetToInputAsset,
+  toGenerationTask,
+  toImageGenerationTask,
+  toImageModel,
+  toPromptField,
+  toVideoModel
+} from "@/api/adapters";
+import {
+  createUserImageTask,
+  createUserTask,
+  getImageTaskDownload,
+  getImageTaskPreview,
+  getTaskDownload,
+  getTaskPreview,
+  listUserImageTasks,
+  listUserTasks,
+  uploadAsset
+} from "@/api/user";
 import type { ApiUploadedAsset } from "@/api/types";
 import { useAuth } from "@/hooks/useAuth";
 import { getErrorMessage } from "@/utils/errors";
@@ -57,21 +81,34 @@ function getModelDefaultValues(model: VideoModel) {
   };
 }
 
+function getImageModelDefaultValues(model: ImageModel) {
+  return {
+    imageRatio: model.aspectRatios[0],
+    imageSize: model.sizes[0],
+    imageCount: 1
+  };
+}
+
 export function UserWorkspacePage() {
   const screens = useBreakpoint();
   const [form] = Form.useForm();
   const [mode, setMode] = useState<PromptMode>("advanced");
+  const [generationType, setGenerationType] = useState<"video" | "image">("video");
   const [models, setModels] = useState<VideoModel[]>([]);
+  const [imageModels, setImageModels] = useState<ImageModel[]>([]);
   const [promptFields, setPromptFields] = useState<AdvancedPromptField[]>([]);
   const [tasks, setTasks] = useState<GenerationTask[]>([]);
   const [selectedModelId, setSelectedModelId] = useState("");
+  const [selectedImageModelId, setSelectedImageModelId] = useState("");
   const [guideOpen, setGuideOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [estimateCost, setEstimateCost] = useState<number | null>(null);
   const [assets, setAssets] = useState<ApiUploadedAsset[]>([]);
   const [previewUrl, setPreviewUrl] = useState("");
+  const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const pendingImageUploadCountRef = useRef(0);
   const entranceRef = useAnimeEntrance("[data-animate-item]");
   const { user, refreshUser } = useAuth();
 
@@ -79,25 +116,36 @@ export function UserWorkspacePage() {
     () => models.find((item) => item.id === selectedModelId) ?? models[0],
     [models, selectedModelId]
   );
+  const selectedImageModel = useMemo<ImageModel | undefined>(
+    () => imageModels.find((item) => item.id === selectedImageModelId) ?? imageModels[0],
+    [imageModels, selectedImageModelId]
+  );
   const watchedResolution = Form.useWatch("resolution", form);
   const watchedDuration = Form.useWatch("duration", form);
+  const watchedImageSize = Form.useWatch("imageSize", form);
+  const watchedImageCount = Form.useWatch("imageCount", form);
   const watchedPrompt = Form.useWatch("prompt", form);
   const watchedAdvanced = Form.useWatch("advanced", form);
 
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
     try {
-      const [modelResult, fieldResult] = await Promise.all([
+      const [modelResult, imageModelResult, fieldResult] = await Promise.all([
         listPublicModels(),
+        listPublicImageModels(),
         listPublicPromptFields()
       ]);
       const nextModels = modelResult.list.map(toVideoModel);
+      const nextImageModels = imageModelResult.list.map(toImageModel);
       const nextFields = fieldResult.list.map(toPromptField);
       setModels(nextModels);
       setSelectedModelId((current) => nextModels.some((item) => item.id === current) ? current : nextModels[0]?.id ?? "");
+      setImageModels(nextImageModels);
+      setSelectedImageModelId((current) => nextImageModels.some((item) => item.id === current) ? current : nextImageModels[0]?.id ?? "");
       setPromptFields(nextFields);
     } catch (error) {
       setModels([]);
+      setImageModels([]);
       setPromptFields([]);
       message.warning(getErrorMessage(error));
     } finally {
@@ -111,15 +159,21 @@ export function UserWorkspacePage() {
       return;
     }
     try {
-      const result = await listUserTasks(1, 8);
-      const modelMap = new Map(models.map((item) => [item.id, item.name]));
-      setTasks(result.list.map((item) => toGenerationTask(item, modelMap)));
+      if (generationType === "image") {
+        const result = await listUserImageTasks(1, 8);
+        const modelMap = new Map(imageModels.map((item) => [item.id, item.name]));
+        setTasks(result.list.map((item) => toImageGenerationTask(item, modelMap)));
+      } else {
+        const result = await listUserTasks(1, 8);
+        const modelMap = new Map(models.map((item) => [item.id, item.name]));
+        setTasks(result.list.map((item) => toGenerationTask(item, modelMap)));
+      }
     } catch (error) {
       if (!options.silent) {
         message.warning(getErrorMessage(error));
       }
     }
-  }, [models, user]);
+  }, [generationType, imageModels, models, user]);
 
   useEffect(() => {
     void loadWorkspace();
@@ -155,24 +209,34 @@ export function UserWorkspacePage() {
   }, [loadTasks]);
 
   useEffect(() => {
-    if (selectedModel) {
+    if (generationType === "video" && selectedModel) {
       form.setFieldsValue(getModelDefaultValues(selectedModel));
       setAssets([]);
       setEstimateCost(null);
     }
-  }, [form, selectedModel]);
+    if (generationType === "image" && selectedImageModel) {
+      form.setFieldsValue(getImageModelDefaultValues(selectedImageModel));
+      setAssets([]);
+      setEstimateCost(null);
+    }
+  }, [form, generationType, selectedImageModel, selectedModel]);
 
   const estimatedCost = estimateCost ?? 0;
   const currentCredits = user?.credit_balance ?? 0;
-  const capabilityLabels = selectedModel?.inputCapabilities.map((item) => item.label) ?? [];
-  const pricingText = selectedModel
-    ? selectedModel.billingType === "per_second"
-      ? `${selectedModel.price} 积分 / 秒`
-      : `${selectedModel.price} 积分 / 次`
-    : "";
+  const activeStatus = generationType === "image" ? selectedImageModel?.status : selectedModel?.status;
+  const capabilityLabels = generationType === "image"
+    ? selectedImageModel?.inputCapabilities.map((item) => item.label) ?? []
+    : selectedModel?.inputCapabilities.map((item) => item.label) ?? [];
+  const pricingText = generationType === "image"
+    ? selectedImageModel ? `${selectedImageModel.pricePerImage} 积分 / 张` : ""
+    : selectedModel
+      ? selectedModel.billingType === "per_second"
+        ? `${selectedModel.price} 积分 / 秒`
+        : `${selectedModel.price} 积分 / 次`
+      : "";
   const canSubmit =
-    selectedModel !== undefined &&
-    selectedModel.status === "available" &&
+    (generationType === "image" ? selectedImageModel !== undefined : selectedModel !== undefined) &&
+    activeStatus === "available" &&
     Boolean(user) &&
     estimateCost !== null &&
     currentCredits >= estimatedCost &&
@@ -185,7 +249,7 @@ export function UserWorkspacePage() {
   }, [assets]);
 
   useEffect(() => {
-    if (!selectedModel) {
+    if (generationType !== "video" || !selectedModel) {
       return;
     }
     const duration = Number(watchedDuration ?? selectedModel.defaultDuration ?? selectedModel.durations[0] ?? 0);
@@ -208,9 +272,35 @@ export function UserWorkspacePage() {
         .catch(() => setEstimateCost(null));
     }, 260);
     return () => window.clearTimeout(timer);
-  }, [form, inputTypes, mode, selectedModel, watchedDuration, watchedResolution]);
+  }, [form, generationType, inputTypes, mode, selectedModel, watchedDuration, watchedResolution]);
+
+  useEffect(() => {
+    if (generationType !== "image" || !selectedImageModel) {
+      return;
+    }
+    const size = watchedImageSize ?? selectedImageModel.sizes[0];
+    const ratio = form.getFieldValue("imageRatio") ?? selectedImageModel.aspectRatios[0];
+    const imageCount = Number(watchedImageCount ?? 1);
+    if (!size || !ratio || !imageCount) {
+      return;
+    }
+    setEstimateCost(null);
+    const timer = window.setTimeout(() => {
+      estimateImageGeneration({
+        model_id: selectedImageModel.id,
+        input_types: inputTypes,
+        aspect_ratio: ratio,
+        size,
+        n: imageCount
+      })
+        .then((result) => setEstimateCost(result.credit_cost))
+        .catch(() => setEstimateCost(null));
+    }, 260);
+    return () => window.clearTimeout(timer);
+  }, [form, generationType, inputTypes, selectedImageModel, watchedImageCount, watchedImageSize]);
 
   const handleUpload = async (file: File, assetType: "image" | "video" | "audio") => {
+    let countedPendingImage = false;
     if (!user) {
       Modal.confirm({
         title: "请先登录",
@@ -224,11 +314,38 @@ export function UserWorkspacePage() {
       return Upload.LIST_IGNORE;
     }
     try {
+      if (assetType === "image" && file.size > 20 * 1024 * 1024) {
+        message.warning("图片单张不能超过 20MB");
+        return Upload.LIST_IGNORE;
+      }
+      if (generationType === "image" && assetType === "image") {
+        const currentImageCount = assets.filter((item) => item.asset_type === "image").length;
+        if (currentImageCount + pendingImageUploadCountRef.current >= 10) {
+          message.warning("参考图最多上传 10 张");
+          return Upload.LIST_IGNORE;
+        }
+        pendingImageUploadCountRef.current += 1;
+        countedPendingImage = true;
+      }
       const uploaded = await uploadAsset(file, assetType);
-      setAssets((prev) => [...prev.filter((item) => item.asset_type !== assetType), uploaded]);
+      setAssets((prev) => {
+        if (generationType === "image" && assetType === "image") {
+          const otherAssets = prev.filter((item) => item.asset_type !== "image");
+          const imageAssets = prev.filter((item) => item.asset_type === "image");
+          if (imageAssets.length >= 10) {
+            return prev;
+          }
+          return [...otherAssets, ...imageAssets, uploaded];
+        }
+        return [...prev.filter((item) => item.asset_type !== assetType), uploaded];
+      });
       message.success("素材已上传");
     } catch (error) {
       message.error(getErrorMessage(error));
+    } finally {
+      if (countedPendingImage && pendingImageUploadCountRef.current > 0) {
+        pendingImageUploadCountRef.current -= 1;
+      }
     }
     return Upload.LIST_IGNORE;
   };
@@ -247,7 +364,16 @@ export function UserWorkspacePage() {
       .join("\n");
   };
 
-  const handleSubmit = async (values: { prompt?: string; advanced?: Record<string, string>; ratio: string; resolution: string; duration: number }) => {
+  const handleSubmit = async (values: {
+    prompt?: string;
+    advanced?: Record<string, string>;
+    ratio: string;
+    resolution: string;
+    duration: number;
+    imageRatio: string;
+    imageSize: string;
+    imageCount: number;
+  }) => {
     if (!user) {
       Modal.confirm({
         title: "请先登录",
@@ -260,7 +386,10 @@ export function UserWorkspacePage() {
       });
       return;
     }
-    if (!selectedModel) {
+    if (generationType === "video" && !selectedModel) {
+      return;
+    }
+    if (generationType === "image" && !selectedImageModel) {
       return;
     }
     const prompt = buildPrompt(values);
@@ -270,17 +399,29 @@ export function UserWorkspacePage() {
     }
     setSubmitting(true);
     try {
-      await createUserTask({
-        model_id: selectedModel.id,
-        prompt_mode: mode,
-        prompt,
-        advanced_prompt_json: values.advanced ?? {},
-        input_types: inputTypes,
-        input_assets: assets.map(assetToInputAsset),
-        aspect_ratio: values.ratio,
-        resolution: values.resolution,
-        duration_seconds: Number(values.duration)
-      });
+      if (generationType === "image" && selectedImageModel) {
+        await createUserImageTask({
+          model_id: selectedImageModel.id,
+          prompt,
+          input_types: inputTypes,
+          input_assets: assets.map(assetToInputAsset),
+          aspect_ratio: values.imageRatio,
+          size: values.imageSize,
+          n: Number(values.imageCount || 1)
+        });
+      } else if (selectedModel) {
+        await createUserTask({
+          model_id: selectedModel.id,
+          prompt_mode: mode,
+          prompt,
+          advanced_prompt_json: values.advanced ?? {},
+          input_types: inputTypes,
+          input_assets: assets.map(assetToInputAsset),
+          aspect_ratio: values.ratio,
+          resolution: values.resolution,
+          duration_seconds: Number(values.duration)
+        });
+      }
       message.success("任务已创建");
       setAssets([]);
       await Promise.all([refreshUser(), loadTasks()]);
@@ -293,12 +434,26 @@ export function UserWorkspacePage() {
 
   const handlePreview = async (task: GenerationTask) => {
     try {
+      if (task.taskType === "image") {
+        const result = await getImageTaskPreview(task.id);
+        const urls = result.urls?.length ? result.urls : task.imageUrls ?? [];
+        const url = result.preview_url || urls[0];
+        if (!url) {
+          message.warning("当前任务暂无可预览图片");
+          return;
+        }
+        setPreviewImages(urls.length ? urls : [url]);
+        setPreviewUrl("");
+        setPreviewOpen(true);
+        return;
+      }
       const result = await getTaskPreview(task.id);
       const url = result.preview_url || task.videoUrl;
       if (!url) {
         message.warning("当前任务暂无可预览视频");
         return;
       }
+      setPreviewImages([]);
       setPreviewUrl(url);
       setPreviewOpen(true);
     } catch (error) {
@@ -308,6 +463,16 @@ export function UserWorkspacePage() {
 
   const handleDownload = async (task: GenerationTask) => {
     try {
+      if (task.taskType === "image") {
+        const result = await getImageTaskDownload(task.id);
+        const url = result.download_url || result.urls?.[0] || task.imageUrls?.[0];
+        if (!url) {
+          message.warning("当前任务暂无可下载图片");
+          return;
+        }
+        window.open(url, "_blank", "noopener,noreferrer");
+        return;
+      }
       const result = await getTaskDownload(task.id);
       const url = result.download_url || task.videoUrl;
       if (!url) {
@@ -320,7 +485,9 @@ export function UserWorkspacePage() {
     }
   };
 
-  if (!selectedModel) {
+  const noCurrentModel = generationType === "image" ? !selectedImageModel : !selectedModel;
+
+  if (noCurrentModel) {
     return (
       <UserLayout>
         <div className="rm-page-shell">
@@ -340,7 +507,7 @@ export function UserWorkspacePage() {
             <Space direction="vertical" size={24} style={{ width: "100%" }}>
               <SectionHeader
                 eyebrow="工作台"
-                title="直接开始生成视频"
+                title={generationType === "image" ? "直接开始生成图片" : "直接开始生成视频"}
                 extra={
                   <Space>
                     <Button
@@ -355,52 +522,103 @@ export function UserWorkspacePage() {
                 }
               />
 
-              <ModelSelector
-                models={models}
-                selectedId={selectedModelId}
-                onSelect={setSelectedModelId}
+              <Segmented
+                block
+                value={generationType}
+                onChange={(value) => {
+                  setGenerationType(value as "video" | "image");
+                  setAssets([]);
+                  setEstimateCost(null);
+                }}
+                options={[
+                  { label: "视频生成", value: "video", icon: <Video size={15} /> },
+                  { label: "图片生成", value: "image", icon: <ImageIcon size={15} /> }
+                ]}
               />
+
+              {generationType === "image" ? (
+                <ModelSelector
+                  models={imageModels.map((item) => ({
+                    id: item.id,
+                    name: item.name,
+                    provider: item.provider,
+                    badge: item.badge,
+                    description: item.description,
+                    status: item.status,
+                    billingType: "per_generation",
+                    price: item.pricePerImage,
+                    aspectRatios: item.aspectRatios,
+                    resolutions: item.sizes,
+                    durations: [1],
+                    defaultDuration: 1,
+                    inputCapabilities: item.inputCapabilities,
+                    highlights: item.highlights
+                  }))}
+                  selectedId={selectedImageModelId}
+                  onSelect={setSelectedImageModelId}
+                />
+              ) : (
+                <ModelSelector
+                  models={models}
+                  selectedId={selectedModelId}
+                  onSelect={setSelectedModelId}
+                />
+              )}
 
               <Form
                 layout="vertical"
                 form={form}
-                initialValues={getModelDefaultValues(selectedModel)}
+                initialValues={selectedModel ? getModelDefaultValues(selectedModel) : undefined}
                 onFinish={handleSubmit}
               >
                 <Row gutter={[16, 16]}>
                   <Col span={24} xl={14}>
                     <Form.Item label="当前模型" style={{ marginBottom: 0 }}>
-                      <Input value={selectedModel.name} readOnly />
+                      <Input value={generationType === "image" ? selectedImageModel?.name : selectedModel?.name} readOnly />
                     </Form.Item>
                   </Col>
                   <Col span={24} sm={12} xl={5}>
                     <Form.Item label="图像参考">
                       <Upload
-                        accept="image/*"
+                        accept=".jpg,.jpeg,.png,.webp,.heic,.avif,image/jpeg,image/png,image/webp,image/heic,image/avif"
+                        multiple={generationType === "image"}
                         showUploadList={false}
                         beforeUpload={(file) => handleUpload(file, "image")}
-                        disabled={!selectedModel.inputCapabilities.some((item) => item.key === "image")}
+                        disabled={
+                          generationType === "image"
+                            ? !selectedImageModel?.inputCapabilities.some((item) => item.key === "image")
+                            : !selectedModel?.inputCapabilities.some((item) => item.key === "image")
+                        }
                       >
-                        <Button block disabled={!selectedModel.inputCapabilities.some((item) => item.key === "image")}>
-                          {assets.some((item) => item.asset_type === "image") ? "已上传图片" : "上传图片"}
+                        <Button
+                          block
+                          disabled={
+                            generationType === "image"
+                              ? !selectedImageModel?.inputCapabilities.some((item) => item.key === "image")
+                              : !selectedModel?.inputCapabilities.some((item) => item.key === "image")
+                          }
+                        >
+                          {assets.some((item) => item.asset_type === "image") ? `已上传 ${assets.filter((item) => item.asset_type === "image").length} 张` : "上传图片"}
                         </Button>
                       </Upload>
                     </Form.Item>
                   </Col>
-                  <Col span={24} sm={12} xl={5}>
-                    <Form.Item label="音频参考">
-                      <Upload
-                        accept="audio/*"
-                        showUploadList={false}
-                        beforeUpload={(file) => handleUpload(file, "audio")}
-                        disabled={!selectedModel.inputCapabilities.some((item) => item.key === "audio")}
-                      >
-                        <Button block disabled={!selectedModel.inputCapabilities.some((item) => item.key === "audio")}>
-                          {assets.some((item) => item.asset_type === "audio") ? "已上传音频" : "上传音频"}
-                        </Button>
-                      </Upload>
-                    </Form.Item>
-                  </Col>
+	                  {generationType === "video" ? (
+	                    <Col span={24} sm={12} xl={5}>
+	                      <Form.Item label="音频参考">
+	                        <Upload
+	                          accept="audio/*"
+	                          showUploadList={false}
+	                          beforeUpload={(file) => handleUpload(file, "audio")}
+	                          disabled={!selectedModel?.inputCapabilities.some((item) => item.key === "audio")}
+	                        >
+	                          <Button block disabled={!selectedModel?.inputCapabilities.some((item) => item.key === "audio")}>
+	                            {assets.some((item) => item.asset_type === "audio") ? "已上传音频" : "上传音频"}
+	                          </Button>
+	                        </Upload>
+	                      </Form.Item>
+	                    </Col>
+	                  ) : null}
                 </Row>
 
                 <PromptModeFields
@@ -413,9 +631,9 @@ export function UserWorkspacePage() {
 
                 <Row gutter={[16, 0]}>
                   <Col span={24} md={8}>
-                    <Form.Item label="视频比例" name="ratio">
+                    <Form.Item label={generationType === "image" ? "图片比例" : "视频比例"} name={generationType === "image" ? "imageRatio" : "ratio"}>
                       <Select
-                        options={selectedModel.aspectRatios.map((item) => ({
+                        options={(generationType === "image" ? selectedImageModel?.aspectRatios ?? [] : selectedModel?.aspectRatios ?? []).map((item) => ({
                           value: item,
                           label: item
                         }))}
@@ -423,9 +641,9 @@ export function UserWorkspacePage() {
                     </Form.Item>
                   </Col>
                   <Col span={24} md={8}>
-                    <Form.Item label="清晰度" name="resolution">
+                    <Form.Item label={generationType === "image" ? "图片尺寸" : "清晰度"} name={generationType === "image" ? "imageSize" : "resolution"}>
                       <Select
-                        options={selectedModel.resolutions.map((item) => ({
+                        options={(generationType === "image" ? selectedImageModel?.sizes ?? [] : selectedModel?.resolutions ?? []).map((item) => ({
                           value: item,
                           label: item
                         }))}
@@ -433,17 +651,26 @@ export function UserWorkspacePage() {
                     </Form.Item>
                   </Col>
                   <Col span={24} md={8}>
-                    <Form.Item label="时长" name="duration">
-                      <Select
-                        disabled={selectedModel.billingType === "per_generation"}
-                        options={(selectedModel.durations.length
-                          ? selectedModel.durations
-                          : [selectedModel.defaultDuration ?? 6]
-                        ).map((item) => ({
-                          value: item,
-                          label: `${item} 秒`
-                        }))}
-                      />
+                    <Form.Item label={generationType === "image" ? "生成张数" : "时长"} name={generationType === "image" ? "imageCount" : "duration"}>
+                      {generationType === "image" ? (
+                        <Select
+                          options={Array.from({ length: Math.min(selectedImageModel?.maxN ?? 1, 10) }, (_, index) => index + 1).map((item) => ({
+                            value: item,
+                            label: `${item} 张`
+                          }))}
+                        />
+                      ) : (
+                        <Select
+                          disabled={selectedModel?.billingType === "per_generation"}
+                          options={((selectedModel?.durations.length ?? 0)
+                            ? selectedModel?.durations ?? []
+                            : [selectedModel?.defaultDuration ?? 6]
+                          ).map((item) => ({
+                            value: item,
+                            label: `${item} 秒`
+                          }))}
+                        />
+                      )}
                     </Form.Item>
                   </Col>
                 </Row>
@@ -461,9 +688,11 @@ export function UserWorkspacePage() {
                       title="预计消耗"
                       value={estimateCost === null ? "待试算" : estimatedCost.toString()}
                       delta={
-                        selectedModel.billingType === "per_second"
-                          ? `${selectedModel.price} 积分 / 秒`
-                          : `${selectedModel.price} 积分 / 次`
+                        generationType === "image"
+                          ? `${selectedImageModel?.pricePerImage ?? 0} 积分 / 张`
+                          : selectedModel?.billingType === "per_second"
+                            ? `${selectedModel.price} 积分 / 秒`
+                            : `${selectedModel?.price ?? 0} 积分 / 次`
                       }
                       icon={<WandSparkles size={16} />}
                     />
@@ -471,7 +700,7 @@ export function UserWorkspacePage() {
                   <Col span={24} md={8}>
                     <MetricCard
                       title="状态"
-                      value={!user ? "需登录" : selectedModel.status !== "available" ? "模型不可用" : estimateCost === null ? "等待试算" : currentCredits >= estimatedCost ? "可提交" : "积分不足"}
+                      value={!user ? "需登录" : activeStatus !== "available" ? "模型不可用" : estimateCost === null ? "等待试算" : currentCredits >= estimatedCost ? "可提交" : "积分不足"}
                       icon={<Lock size={16} />}
                     />
                   </Col>
@@ -515,11 +744,13 @@ export function UserWorkspacePage() {
                   当前模型信息
                 </Typography.Title>
                 <Space wrap size={[8, 8]}>
-                  <Tag color="orange">{selectedModel.provider}</Tag>
-                  <Tag>{selectedModel.status === "available" ? "可用" : selectedModel.status === "maintenance" ? "维护中" : "即将推出"}</Tag>
-                  <Tag color="blue">{selectedModel.billingType === "per_second" ? "按秒计费" : "按次计费"}</Tag>
+                  <Tag color="orange">{generationType === "image" ? selectedImageModel?.provider : selectedModel?.provider}</Tag>
+                  <Tag>{activeStatus === "available" ? "可用" : activeStatus === "maintenance" ? "维护中" : "即将推出"}</Tag>
+                  <Tag color="blue">{generationType === "image" ? "按张计费" : selectedModel?.billingType === "per_second" ? "按秒计费" : "按次计费"}</Tag>
                 </Space>
-                <Typography.Text className="rm-muted">{selectedModel.description || "模型参数由后台配置，按当前可用能力提交。"}</Typography.Text>
+                <Typography.Text className="rm-muted">
+                  {(generationType === "image" ? selectedImageModel?.description : selectedModel?.description) || "模型参数由后台配置，按当前可用能力提交。"}
+                </Typography.Text>
                 <Row gutter={[12, 12]}>
                   <Col span={12}>
                     <div className="rm-side-panel">
@@ -543,21 +774,19 @@ export function UserWorkspacePage() {
                   </Col>
                   <Col span={12}>
                     <div className="rm-side-panel">
-                      <Typography.Text className="rm-muted">比例</Typography.Text>
-                      <Typography.Title level={5} style={{ margin: "10px 0 0" }}>
-                        {selectedModel.aspectRatios.join(" / ")}
-                      </Typography.Title>
+	                      <Typography.Text className="rm-muted">比例</Typography.Text>
+	                      <Typography.Title level={5} style={{ margin: "10px 0 0" }}>
+	                        {generationType === "image" ? selectedImageModel?.aspectRatios.join(" / ") : selectedModel?.aspectRatios.join(" / ")}
+	                      </Typography.Title>
                     </div>
                   </Col>
                   <Col span={12}>
                     <div className="rm-side-panel">
-                      <Typography.Text className="rm-muted">清晰度与时长</Typography.Text>
+                      <Typography.Text className="rm-muted">{generationType === "image" ? "尺寸与张数" : "清晰度与时长"}</Typography.Text>
                       <Typography.Title level={5} style={{ margin: "10px 0 0" }}>
-                        {selectedModel.resolutions.join(" / ")} · {(
-                          selectedModel.durations.length
-                            ? selectedModel.durations
-                            : [selectedModel.defaultDuration ?? 6]
-                        ).join(" / ")} 秒
+                        {generationType === "image"
+                          ? `${selectedImageModel?.sizes.join(" / ")} · 最多 ${selectedImageModel?.maxN ?? 1} 张`
+                          : `${selectedModel?.resolutions.join(" / ")} · ${(selectedModel?.durations.length ? selectedModel.durations : [selectedModel?.defaultDuration ?? 6]).join(" / ")} 秒`}
                       </Typography.Title>
                     </div>
                   </Col>
@@ -577,11 +806,11 @@ export function UserWorkspacePage() {
                         {assets.length ? `已上传 ${assets.length} 个参考素材：${assets.map((item) => item.file_name).join("、")}` : "按当前模型能力上传参考素材。"}
                       </Typography.Text>
                     </Space>
-                    <Space align="start" size={10}>
-                      <Video size={16} color="#7c3aed" style={{ marginTop: 2 }} />
-                      <Typography.Text className="rm-muted">
-                        {watchedAdvanced ? "提交前会按真实接口试算积分。" : "生成结果只在点击预览时加载视频。"}
-                      </Typography.Text>
+	                    <Space align="start" size={10}>
+	                      {generationType === "image" ? <ImageIcon size={16} color="#7c3aed" style={{ marginTop: 2 }} /> : <Video size={16} color="#7c3aed" style={{ marginTop: 2 }} />}
+	                      <Typography.Text className="rm-muted">
+	                        {generationType === "image" ? "列表优先加载缩略图，点击预览后再打开原图。" : watchedAdvanced ? "提交前会按真实接口试算积分。" : "生成结果只在点击预览时加载视频。"}
+	                      </Typography.Text>
                     </Space>
                   </Space>
                 </div>
@@ -591,7 +820,13 @@ export function UserWorkspacePage() {
         </div>
 
         <div data-animate-item>
-          <TaskList tasks={tasks} loading={loading} onPreview={handlePreview} onDownload={handleDownload} />
+          <TaskList
+            tasks={tasks}
+            loading={loading}
+            title={generationType === "image" ? "最近图片生成记录" : "最近视频生成记录"}
+            onPreview={handlePreview}
+            onDownload={handleDownload}
+          />
         </div>
       </div>
 
@@ -608,16 +843,23 @@ export function UserWorkspacePage() {
 
       <Modal
         open={previewOpen}
-        title="视频预览"
+        title={previewImages.length ? "图片预览" : "视频预览"}
         footer={null}
         width={860}
         onCancel={() => {
           setPreviewOpen(false);
           setPreviewUrl("");
+          setPreviewImages([]);
         }}
         destroyOnClose
       >
-        {previewUrl ? (
+        {previewImages.length ? (
+          <Space direction="vertical" size={12} style={{ width: "100%" }}>
+            {previewImages.map((url) => (
+              <img key={url} src={url} alt="生成图片" style={{ width: "100%", borderRadius: 12, background: "#f5f5f5" }} />
+            ))}
+          </Space>
+        ) : previewUrl ? (
           <video controls src={previewUrl} style={{ width: "100%", borderRadius: 12, background: "#000" }} />
         ) : null}
       </Modal>

@@ -2,6 +2,8 @@ import { apiRequest, downloadFile } from "@/api/client";
 import type {
   ApiCreditPackage,
   ApiCreditTransaction,
+  ApiImageModel,
+  ApiImageTask,
   ApiOverview,
   ApiPage,
   ApiPromptField,
@@ -35,6 +37,26 @@ export function updateAdminModel(id: string, payload: Partial<ApiVideoModel>) {
 
 export function updateAdminModelStatus(id: string, status: string) {
   return apiRequest<ApiVideoModel>(`/admin/models/${id}/status`, {
+    method: "PATCH",
+    auth: "admin",
+    body: { status }
+  });
+}
+
+export function listAdminImageModels() {
+  return apiRequest<{ list: ApiImageModel[] }>("/admin/image-models", { auth: "admin" });
+}
+
+export function createAdminImageModel(payload: Partial<ApiImageModel>) {
+  return apiRequest<ApiImageModel>("/admin/image-models", { method: "POST", auth: "admin", body: payload });
+}
+
+export function updateAdminImageModel(id: string, payload: Partial<ApiImageModel>) {
+  return apiRequest<ApiImageModel>(`/admin/image-models/${id}`, { method: "PATCH", auth: "admin", body: payload });
+}
+
+export function updateAdminImageModelStatus(id: string, status: string) {
+  return apiRequest<ApiImageModel>(`/admin/image-models/${id}/status`, {
     method: "PATCH",
     auth: "admin",
     body: { status }
@@ -173,6 +195,13 @@ export function listAdminTasks(page = 1, pageSize = 20) {
   });
 }
 
+export function listAdminImageTasks(page = 1, pageSize = 20) {
+  return apiRequest<ApiPage<ApiImageTask>>("/admin/image-tasks", {
+    auth: "admin",
+    params: { page, page_size: pageSize }
+  });
+}
+
 export function markTaskFailed(id: string, reason: string) {
   return apiRequest<ApiVideoTask>(`/admin/tasks/${id}/mark-failed`, {
     method: "POST",
@@ -189,10 +218,25 @@ export function refundTask(id: string, reason: string) {
   });
 }
 
+export function markImageTaskFailed(id: string, reason: string) {
+  return apiRequest<ApiImageTask>(`/admin/image-tasks/${id}/mark-failed`, {
+    method: "POST",
+    auth: "admin",
+    body: { reason }
+  });
+}
+
+export function refundImageTask(id: string, reason: string) {
+  return apiRequest<ApiImageTask>(`/admin/image-tasks/${id}/refund`, {
+    method: "POST",
+    auth: "admin",
+    body: { reason }
+  });
+}
+
 export function listAdminTransactions(page = 1, pageSize = 20) {
   return apiRequest<ApiPage<ApiCreditTransaction>>("/admin/credit-transactions", {
     auth: "admin",
     params: { page, page_size: pageSize }
   });
 }
-

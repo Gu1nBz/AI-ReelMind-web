@@ -1,6 +1,8 @@
 import type {
   ApiCreditPackage,
   ApiCreditTransaction,
+  ApiImageModel,
+  ApiImageTask,
   ApiPromptField,
   ApiRedeemCode,
   ApiRedeemRecord,
@@ -13,6 +15,7 @@ import type {
   AdvancedPromptField,
   CreditPackage,
   GenerationTask,
+  ImageModel,
   RedeemCodeRecord,
   TransactionRecord,
   UserProfile,
@@ -50,6 +53,28 @@ export function toVideoModel(item: ApiVideoModel): VideoModel {
       label: inputLabels[key] ?? key,
       required: key === "text"
     })),
+    highlights: [item.model_key, item.provider_name, item.badge].filter(Boolean)
+  };
+}
+
+export function toImageModel(item: ApiImageModel): ImageModel {
+  return {
+    id: item.id,
+    name: item.name,
+    provider: item.provider_name,
+    badge: item.badge || item.model_key,
+    description: item.description,
+    status: item.status,
+    pricePerImage: item.price_per_image ?? 0,
+    maxN: item.max_n ?? 1,
+    aspectRatios: item.aspect_ratio_options ?? [],
+    sizes: item.supported_sizes ?? [],
+    inputCapabilities: (item.supported_input_types ?? []).map((key) => ({
+      key,
+      label: inputLabels[key] ?? key,
+      required: key === "text"
+    })),
+    capabilities: item.capabilities ?? {},
     highlights: [item.model_key, item.provider_name, item.badge].filter(Boolean)
   };
 }
@@ -103,6 +128,7 @@ export function toGenerationTask(item: ApiVideoTask, modelMap: Map<string, strin
   const assetCover = item.input_assets?.find((asset) => asset.url)?.url ?? "";
   return {
     id: item.id,
+    taskType: "video",
     createdAt: formatDateTime(item.created_at),
     modelName: modelMap.get(item.model_id) ?? item.model_id.slice(0, 8),
     prompt: item.prompt,
@@ -116,6 +142,28 @@ export function toGenerationTask(item: ApiVideoTask, modelMap: Map<string, strin
     thumbnail: item.cover_url || assetCover,
     videoUrl: item.video_url,
     coverUrl: item.cover_url,
+    errorMessage: item.error_message
+  };
+}
+
+export function toImageGenerationTask(item: ApiImageTask, modelMap: Map<string, string> = new Map()): GenerationTask {
+  const thumbnail = item.thumbnail_urls?.[0] ?? item.image_urls?.[0] ?? item.input_assets?.find((asset) => asset.url)?.url ?? "";
+  return {
+    id: item.id,
+    taskType: "image",
+    createdAt: formatDateTime(item.created_at),
+    modelName: modelMap.get(item.model_id) ?? item.model_id.slice(0, 8),
+    prompt: item.prompt,
+    promptMode: "basic",
+    inputTypes: item.input_types ?? [],
+    aspectRatio: item.aspect_ratio,
+    resolution: item.size,
+    imageCount: item.n,
+    cost: item.credit_cost,
+    status: item.status,
+    thumbnail,
+    imageUrls: item.image_urls ?? [],
+    thumbnailUrls: item.thumbnail_urls ?? [],
     errorMessage: item.error_message
   };
 }

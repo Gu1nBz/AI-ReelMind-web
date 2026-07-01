@@ -2,6 +2,7 @@ import { apiRequest } from "@/api/client";
 import type {
   ApiCreateTaskResponse,
   ApiCreditTransaction,
+  ApiImageTask,
   ApiPage,
   ApiPreviewResponse,
   ApiRedeemRecord,
@@ -40,6 +41,13 @@ export function listUserTasks(page = 1, pageSize = 20) {
   });
 }
 
+export function listUserImageTasks(page = 1, pageSize = 20) {
+  return apiRequest<ApiPage<ApiImageTask>>("/user/image-tasks", {
+    auth: "user",
+    params: { page, page_size: pageSize }
+  });
+}
+
 export function getUserTask(id: string) {
   return apiRequest<ApiVideoTask>(`/user/tasks/${id}`, { auth: "user" });
 }
@@ -63,12 +71,40 @@ export function createUserTask(payload: {
   });
 }
 
+export function createUserImageTask(payload: {
+  model_id: string;
+  prompt: string;
+  negative_prompt?: string;
+  input_types: string[];
+  input_assets: Array<{ asset_id: string; asset_type: string; url: string }>;
+  aspect_ratio: string;
+  size: string;
+  n: number;
+  seed?: number;
+  style?: string;
+  quality?: string;
+}) {
+  return apiRequest<ApiCreateTaskResponse>("/user/image-tasks", {
+    method: "POST",
+    auth: "user",
+    body: payload
+  });
+}
+
 export function getTaskPreview(id: string) {
   return apiRequest<ApiPreviewResponse>(`/user/tasks/${id}/preview`, { auth: "user" });
 }
 
 export function getTaskDownload(id: string) {
   return apiRequest<ApiPreviewResponse>(`/user/tasks/${id}/download`, { auth: "user" });
+}
+
+export function getImageTaskPreview(id: string) {
+  return apiRequest<ApiPreviewResponse>(`/user/image-tasks/${id}/preview`, { auth: "user" });
+}
+
+export function getImageTaskDownload(id: string) {
+  return apiRequest<ApiPreviewResponse>(`/user/image-tasks/${id}/download`, { auth: "user" });
 }
 
 export function redeemCode(code: string) {
@@ -85,4 +121,3 @@ export function listRedeemRecords(page = 1, pageSize = 20) {
     params: { page, page_size: pageSize }
   });
 }
-

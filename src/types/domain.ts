@@ -51,6 +51,22 @@ export interface VideoModel {
   highlights: string[];
 }
 
+export interface ImageModel {
+  id: string;
+  name: string;
+  provider: string;
+  badge: string;
+  description: string;
+  status: ModelStatus;
+  pricePerImage: number;
+  maxN: number;
+  aspectRatios: string[];
+  sizes: string[];
+  inputCapabilities: InputCapability[];
+  capabilities: Record<string, unknown>;
+  highlights: string[];
+}
+
 export interface DemoComparison {
   id: string;
   title: string;
@@ -87,6 +103,7 @@ export interface UserProfile {
 
 export interface GenerationTask {
   id: string;
+  taskType?: "video" | "image";
   createdAt: string;
   modelName: string;
   prompt: string;
@@ -94,12 +111,15 @@ export interface GenerationTask {
   inputTypes: string[];
   aspectRatio: string;
   resolution: string;
-  duration: number;
+  duration?: number;
+  imageCount?: number;
   cost: number;
   status: TaskStatus;
   thumbnail: string;
   videoUrl?: string;
   coverUrl?: string;
+  imageUrls?: string[];
+  thumbnailUrls?: string[];
   errorMessage?: string;
 }
 

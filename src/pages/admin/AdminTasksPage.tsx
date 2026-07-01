@@ -1,32 +1,39 @@
-import { Button, Card, Modal, Space, Table, Typography, message } from "antd";
+import { Button, Card, Modal, Segmented, Space, Table, Typography, message } from "antd";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { SectionHeader } from "@/components/common/SectionHeader";
 import { StatusTag } from "@/components/common/StatusTag";
 import { useAnimeEntrance } from "@/hooks/useAnimeEntrance";
 import { useCallback, useEffect, useState } from "react";
 import type { GenerationTask } from "@/types/domain";
-import { listAdminTasks, markTaskFailed, refundTask } from "@/api/admin";
-import { listPublicModels } from "@/api/public";
-import { toGenerationTask, toVideoModel } from "@/api/adapters";
+import { listAdminImageTasks, listAdminTasks, markImageTaskFailed, markTaskFailed, refundImageTask, refundTask } from "@/api/admin";
+import { listPublicImageModels, listPublicModels } from "@/api/public";
+import { toGenerationTask, toImageGenerationTask, toImageModel, toVideoModel } from "@/api/adapters";
 import { getErrorMessage } from "@/utils/errors";
 
 export function AdminTasksPage() {
   const ref = useAnimeEntrance("[data-animate-item]");
+  const [taskType, setTaskType] = useState<"video" | "image">("video");
   const [tasks, setTasks] = useState<GenerationTask[]>([]);
   const [loading, setLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [taskResult, modelResult] = await Promise.all([listAdminTasks(1, 100), listPublicModels()]);
-      const modelMap = new Map(modelResult.list.map(toVideoModel).map((model) => [model.id, model.name]));
-      setTasks(taskResult.list.map((item) => toGenerationTask(item, modelMap)));
+      if (taskType === "image") {
+        const [taskResult, modelResult] = await Promise.all([listAdminImageTasks(1, 100), listPublicImageModels()]);
+        const modelMap = new Map(modelResult.list.map(toImageModel).map((model) => [model.id, model.name]));
+        setTasks(taskResult.list.map((item) => toImageGenerationTask(item, modelMap)));
+      } else {
+        const [taskResult, modelResult] = await Promise.all([listAdminTasks(1, 100), listPublicModels()]);
+        const modelMap = new Map(modelResult.list.map(toVideoModel).map((model) => [model.id, model.name]));
+        setTasks(taskResult.list.map((item) => toGenerationTask(item, modelMap)));
+      }
     } catch (error) {
       message.error(getErrorMessage(error));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [taskType]);
 
   useEffect(() => {
     void loadData();
@@ -39,6 +46,16 @@ export function AdminTasksPage() {
           <SectionHeader
             eyebrow="任务管理"
             title="任务管理"
+            extra={
+              <Segmented
+                value={taskType}
+                onChange={(value) => setTaskType(value as "video" | "image")}
+                options={[
+                  { label: "视频任务", value: "video" },
+                  { label: "图片任务", value: "image" }
+                ]}
+              />
+            }
           />
         </Card>
 
@@ -72,14 +89,22 @@ export function AdminTasksPage() {
                     })}>查看详情</Button>
                     {["pending", "submitted", "processing"].includes(record.status) ? (
                       <Button danger onClick={async () => {
-                        await markTaskFailed(record.id, "管理员手动标记失败");
+                        if (taskType === "image") {
+                          await markImageTaskFailed(record.id, "管理员手动标记失败");
+                        } else {
+                          await markTaskFailed(record.id, "管理员手动标记失败");
+                        }
                         message.success("任务已标记失败并按规则退款");
                         await loadData();
                       }}>标记失败</Button>
                     ) : null}
                     {record.status === "failed" || record.status === "timed_out" ? (
                       <Button onClick={async () => {
-                        await refundTask(record.id, "管理员手动退款");
+                        if (taskType === "image") {
+                          await refundImageTask(record.id, "管理员手动退款");
+                        } else {
+                          await refundTask(record.id, "管理员手动退款");
+                        }
                         message.success("任务已退款");
                         await loadData();
                       }}>退款</Button>
@@ -92,7 +117,7 @@ export function AdminTasksPage() {
               expandedRowRender: (record) => (
                 <Space direction="vertical">
                   <Typography.Text>
-                    参数：{record.aspectRatio} / {record.resolution} / {record.duration} 秒
+                    参数：{record.aspectRatio} / {record.resolution} / {taskType === "image" ? `${record.imageCount ?? 1} 张` : `${record.duration} 秒`}
                   </Typography.Text>
                   {record.errorMessage ? <Typography.Text type="danger">{record.errorMessage}</Typography.Text> : null}
                 </Space>

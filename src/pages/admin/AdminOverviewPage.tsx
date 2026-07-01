@@ -26,8 +26,8 @@ export function AdminOverviewPage() {
 
   const stats = [
     { title: "用户数", value: String(overview?.total_users ?? 0), delta: "累计注册", icon: <Users size={16} /> },
-    { title: "可用模型", value: String(overview?.available_models ?? 0), delta: "状态 available", icon: <Film size={16} /> },
-    { title: "生成中任务", value: String(overview?.processing_tasks ?? 0), delta: "pending / submitted / processing", icon: <History size={16} /> },
+    { title: "可用模型", value: String((overview?.available_models ?? 0) + (overview?.available_image_models ?? 0)), delta: "视频 + 图片", icon: <Film size={16} /> },
+    { title: "生成中任务", value: String((overview?.processing_tasks ?? 0) + (overview?.processing_image_tasks ?? 0)), delta: "pending / submitted / processing", icon: <History size={16} /> },
     { title: "今日消耗", value: String(overview?.today_credit_consumption ?? 0), delta: "积分", icon: <CircleDollarSign size={16} /> }
   ];
 
@@ -61,6 +61,7 @@ export function AdminOverviewPage() {
                   dataSource={overview?.recent_tasks ?? []}
                   columns={[
                     { title: "任务 ID", dataIndex: "id", key: "id" },
+                    { title: "类型", dataIndex: "task_type", key: "task_type", render: (value: string) => value === "image" ? "图片" : "视频" },
                     { title: "用户 ID", dataIndex: "user_id", key: "user_id" },
                     { title: "创建时间", dataIndex: "created_at", key: "created_at" },
                     {

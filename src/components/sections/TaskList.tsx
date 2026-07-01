@@ -70,7 +70,9 @@ export function TaskList({
                   <Space direction="vertical" size={4}>
                     <Typography.Text>{task.prompt}</Typography.Text>
                     <Typography.Text type="secondary">
-                      {task.aspectRatio} · {task.resolution} · {task.duration} 秒 · {task.inputTypes.join(" / ")}
+                      {task.taskType === "image"
+                        ? `${task.aspectRatio} · ${task.resolution} · ${task.imageCount ?? 1} 张 · ${task.inputTypes.join(" / ")}`
+                        : `${task.aspectRatio} · ${task.resolution} · ${task.duration ?? 0} 秒 · ${task.inputTypes.join(" / ")}`}
                     </Typography.Text>
                     {task.errorMessage ? (
                       <Typography.Text type="danger">{task.errorMessage}</Typography.Text>
